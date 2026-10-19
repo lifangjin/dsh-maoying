@@ -1,11 +1,14 @@
 {
   "name": "dsh-maoying",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "毛颖 — DSH 网文创作辅助插件：主编 + 五帮手编排（大纲/写手/审校/设定/考据），novel/ 结构化文件为数据库",
   "type": "module",
   "license": "MIT",
   "icon": "./icon.svg",
   "main": "index.mjs",
+  "exports": {
+    "./client": "./lib/client.js"
+  },
   "bin": {
     "maoying": "bin/maoying.mjs"
   },
@@ -44,6 +47,13 @@
   "dsh": {
     "bundle": {
       "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-settings",
+        "@deepseek-ai/dsh-client-connection"
+      ]
     }
   }
 }

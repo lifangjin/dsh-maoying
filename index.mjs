@@ -41,16 +41,49 @@
  *   写（major.minor.patch-rc.N），零依赖。
  *
  * 失败面：全程 try/catch，任何失败只 warn 不抛——安装器绝不能弄死宿主启动。
+ *
+ * 三期追加（创作台面板，Node 侧）：本文件同时是 /api/maoying/* 前缀路由的
+ *   注册点（inject webServer + workspaceRegistry，见 registerCreatorRoutes）。
+ *   路由段与安装段彼此独立、各失败各的：路由注册/请求处理失败只 warn，
+ *   安装器语义分毫不动。机制照搬 dsh-paoding 的 paoding-config-ui（MIT，
+ *   同作者）：信任围栏、duplicate prefix route 短重试、限额 JSON 读体、
+ *   client.css 现读下发，姿势一致、注释原创。
  */
 
 import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { readFile } from 'node:fs/promises'
 import { createRequire } from 'node:module'
 import os from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
+import {
+  listWorkspaces,
+  mutateChapterStatus,
+  mutateForeshadowStatus,
+  mutatePhase,
+  parseStateSnapshot,
+  readChapter,
+  rebuildIndex,
+  resolveNovelRoot,
+} from './lib/panel-core.mjs'
+import { loadYamlLib, resolveDshHome } from './lib/yaml-loader.mjs'
+
+// loadYamlLib / resolveDshHome 已迁至 lib/yaml-loader.mjs（创作台业务层与
+// 安装器共用，避免 panel-core 反向 import 主入口）；这里再导出保住本入口的
+// 既有公开 API。
+export { loadYamlLib, resolveDshHome }
+
 /** Cordis plugin name used by loader diagnostics. */
 export const name = 'maoying-installer'
+
+/**
+ * 需要宿主注入的服务：webServer 注册 /api/maoying 前缀路由，
+ * workspaceRegistry 提供工作区白名单（path 参数的安全边界）。webRuntime
+ * 不进 inject——非 web 部署没有它，经 ctx.get 每请求软探测（见
+ * registerCreatorRoutes 内 trustedHostsOf）。
+ */
+export const inject = ['webServer', 'workspaceRegistry']
 
 /** 插件包根（本文件所在目录）。 */
 const PLUGIN_ROOT = path.dirname(fileURLToPath(import.meta.url))
@@ -72,14 +105,6 @@ const PRESET_FILES = ['preset.yml', 'agent.cordis.yml', 'restrict.mjs', 'delegat
 const HOME_PATCH_HEADER =
   '# DeepSeek Harness home 级 patch 层（作用于所有 profile）：手工条目可直接追加，各插件的托管块由起止标记维护。'
 
-// ── 解析 dsh home ───────────────────────────────────────────────────────────
-
-/** DSH_HOME 环境变量优先，缺省 ~/.dsh。 */
-export function resolveDshHome(env = process.env) {
-  const fromEnv = typeof env.DSH_HOME === 'string' ? env.DSH_HOME.trim() : ''
-  return fromEnv !== '' ? fromEnv : path.join(os.homedir(), '.dsh')
-}
-
 // ── 小工具 ──────────────────────────────────────────────────────────────────
 
 /** 本包版本号（package.json 的 version）；读不到返回 null。 */
@@ -90,26 +115,6 @@ export function pluginVersion() {
   } catch {
     return null
   }
-}
-
-/**
- * 从 <home>/node_modules 惰性加载 yaml 包（dsh 自带 v2，见 paoding loadYaml
- * 同款做法）。主路径失败再试插件包自身解析（开发检出偶然落在有 yaml 的目录
- * 里时白捡）；两处都没有返回 null——调用方走回退分支。
- */
-export function loadYamlLib(dshHome) {
-  for (const base of [
-    path.join(dshHome, 'node_modules', 'package.json'),
-    path.join(PLUGIN_ROOT, 'package.json'),
-  ]) {
-    try {
-      const mod = createRequire(base)('yaml')
-      if (mod && typeof mod.parse === 'function' && typeof mod.stringify === 'function') return mod
-    } catch {
-      /* 该路径没有 yaml 包——试下一个 */
-    }
-  }
-  return null
 }
 
 /**
@@ -392,6 +397,251 @@ export function installSkills(dshHome, { version, logger = console } = {}) {
   return copied
 }
 
+// ── 创作台面板：/api/maoying/* 路由（三期）─────────────────────────────────
+//
+// 机制照搬 dsh-paoding 的 paoding-config-ui（MIT，同作者），姿势一致、注释
+// 原创不做逐字搬运。要点：
+//   · 宿主路由自带信任围栏只挂在 /api 网关上；/api/maoying 前缀更长，
+//     webserver 最长前缀优先会命中本插件而绕过网关围栏，故在此复刻同一
+//     围栏语义（Host 回环或 webRuntime.trustedHosts + 拒 cross-site +
+//     origin 同源校验）。
+//   · 所有响应 JSON；错误形状统一 { ok: false, error }（读路由按契约可省
+//     ok），状态码 403/404/409/413/422/500 语义见 docs/creator-panel.md §2。
+//   · 业务读写全部在 lib/panel-core.mjs，这里只做围栏与分发。
+
+function header(headers, name) {
+  const value = headers[name]
+  return typeof value === 'string' ? value : undefined
+}
+
+function parseAuthority(authority) {
+  try { return new URL(`http://${authority}`) } catch { return undefined }
+}
+
+/** 回环地址判定：localhost、[::1] 与 127.0.0.0/8 全段。 */
+function isLoopbackHostname(hostname) {
+  if (hostname === 'localhost' || hostname === '[::1]') return true
+  const parts = hostname.split('.')
+  return parts.length === 4 && parts[0] === '127'
+    && parts.every((p) => /^\d{1,3}$/.test(p) && Number(p) <= 255)
+}
+
+/** Host 头是否落在部署信任列表（精确 host:port，或裸 hostname 放行全端口）。 */
+function isTrustedAuthority(hostUrl, trustedHosts) {
+  return (trustedHosts ?? []).some((entry) => {
+    const entryUrl = parseAuthority(entry)
+    if (entryUrl === undefined) return false
+    return entryUrl.port === ''
+      ? entryUrl.hostname === hostUrl.hostname
+      : entryUrl.host === hostUrl.host
+  })
+}
+
+/**
+ * 信任围栏：Host 必须回环或在部署信任表里（防 DNS-rebinding），再拒绝
+ * cross-site 浏览器请求；带了 origin 头的还须与 Host 同源。无认证部署的
+ * 唯一一道门，任何一步拿不准都按不受信处理。
+ */
+function isTrustedApiRequest(req, trustedHosts) {
+  const host = header(req.headers, 'host')
+  if (host === undefined) return false
+  const hostUrl = parseAuthority(host)
+  if (hostUrl === undefined) return false
+  if (!isLoopbackHostname(hostUrl.hostname) && !isTrustedAuthority(hostUrl, trustedHosts)) return false
+  if (header(req.headers, 'sec-fetch-site') === 'cross-site') return false
+  const origin = header(req.headers, 'origin')
+  if (origin === undefined) return true
+  try { return new URL(origin).hostname === hostUrl.hostname } catch { return false }
+}
+
+/**
+ * 读 JSON 请求体（限额 5MB）。超限 413、非法 JSON 400——错误带 statusCode，
+ * 外层 catch 据此回对应状态码；客户端提前断开时 reject（响应已发出的场景
+ * Promise 已结算，reject 是无害 no-op）。
+ */
+function readBody(req) {
+  return new Promise((resolve, reject) => {
+    const chunks = []
+    let size = 0
+    req.on('data', (c) => {
+      size += c.length
+      if (size > 5 * 1024 * 1024) {
+        const err = new Error('request body too large')
+        err.statusCode = 413
+        reject(err)
+        req.destroy()
+        return
+      }
+      chunks.push(c)
+    })
+    req.on('end', () => {
+      try {
+        resolve(chunks.length ? JSON.parse(Buffer.concat(chunks).toString('utf8')) : {})
+      } catch {
+        const err = new Error('invalid JSON body')
+        err.statusCode = 400
+        reject(err)
+      }
+    })
+    req.on('error', reject)
+    req.on('close', () => reject(new Error('request closed before body completed')))
+    req.on('aborted', () => reject(new Error('request aborted')))
+  })
+}
+
+function json(res, status, payload) {
+  const text = JSON.stringify(payload, null, 2)
+  res.writeHead(status, {
+    'content-type': 'application/json; charset=utf-8',
+    'content-length': Buffer.byteLength(text),
+  })
+  res.end(text)
+}
+
+// 错误原文（可能带本机绝对路径）只进日志；回给浏览器的 message 先把插件
+// 安装根与 home 目录替换成 ~ 再说。
+const SANITIZE_HOME_DIR = path.resolve(os.homedir())
+const SANITIZE_PLUGIN_ROOT = PLUGIN_ROOT.replace(/[\\/]+$/, '')
+
+function sanitizeMessage(message) {
+  let text = String(message ?? '')
+  // 先长后短：安装根通常是 home 的子路径，先替换更具体的
+  text = text.split(SANITIZE_PLUGIN_ROOT).join('~')
+  text = text.split(SANITIZE_HOME_DIR).join('~')
+  return text
+}
+
+// 宿主热切换竞态兜底：「禁用→启用」等操作会重建插件条目纤维，新 apply 先
+// 跑、旧实例的路由注销异步落地，注册瞬间旧路由常仍在表里，webServer.register
+// 对同 (kind, path) 抛 duplicate。只对 duplicate prefix route 这一种错误短
+// 重试等旧注销落地；其余错误原样抛出，真组合冲突不掩盖。
+const DUPLICATE_PREFIX_ROUTE_RE = /^webserver: duplicate prefix route "/
+
+/** 带兜底重试的路由注册：仅对 duplicate prefix route 错误重试，其余立即抛出。 */
+export async function registerPrefixRouteWithRetry(webServer, route, { attempts = 8, delayMs = 30 } = {}) {
+  let lastError
+  for (let attempt = 0; attempt < attempts; attempt++) {
+    try {
+      return webServer.register(route)
+    } catch (err) {
+      if (!DUPLICATE_PREFIX_ROUTE_RE.test(String(err?.message ?? ''))) throw err
+      lastError = err
+      if (attempt < attempts - 1) await new Promise((resolve) => setTimeout(resolve, delayMs))
+    }
+  }
+  throw lastError
+}
+
+/**
+ * 注册创作台全部路由（docs/creator-panel.md §2 的 8 条）。返回宿主 disposer；
+ * webServer 缺席（非 web 部署）时抛错，由 apply 侧统一降级为 warn。
+ */
+export async function registerCreatorRoutes(ctx) {
+  const webServer = ctx?.webServer
+  if (!webServer || typeof webServer.register !== 'function') {
+    throw new Error('webServer 服务不可用（非 web 部署），创作台路由无处注册')
+  }
+  // webRuntime 由宿主 web-runtime 行提供；非 web 部署缺失时退化为仅回环信任。
+  // 每请求实时读，trustedHosts 变化无需重启插件；读取自捕——围栏检查不能以
+  // unhandled rejection 收场，读不到按空信任表继续。
+  const trustedHostsOf = () => {
+    try { return ctx.get('webRuntime')?.trustedHosts ?? [] } catch { return [] }
+  }
+
+  return registerPrefixRouteWithRetry(webServer, {
+    kind: 'prefix',
+    path: '/api/maoying',
+    handler: async (req, res) => {
+      if (!isTrustedApiRequest(req, trustedHostsOf())) {
+        json(res, 403, { error: 'forbidden' })
+        return
+      }
+      const url = new URL(req.url, 'http://dsh.internal')
+      const route = url.pathname.replace(/^\/api\/maoying\/?/, '')
+      try {
+        // ── 静态样式：面板 CSS 正文（lib/base.css）按请求现读下发 ──────────
+        // 客户端只注入 <link href="/api/maoying/client.css">，正文现读——
+        // 改样式无需重启，GUI 刷新即生效（no-cache）。同前缀、已被围栏把关。
+        if (route === 'client.css' && req.method === 'GET') {
+          try {
+            const css = await readFile(new URL('./lib/base.css', import.meta.url), 'utf8')
+            res.writeHead(200, {
+              'content-type': 'text/css; charset=utf-8',
+              'content-length': Buffer.byteLength(css),
+              'cache-control': 'no-cache',
+            })
+            res.end(css)
+          } catch (err) {
+            ctx.logger?.warn?.('maoying 创作台: client.css 读取失败: ' + String(err?.message ?? err))
+            json(res, 500, { ok: false, error: sanitizeMessage(`client.css 不可用: ${err?.message ?? err}`) })
+          }
+          return
+        }
+
+        if (route === 'workspaces' && req.method === 'GET') {
+          // 工作区清单：宿主注册表逐根探测 novel/project.yml，面板顶部
+          // 工作区选择器取数（hasNovel 的排前由客户端做，这里保序即可）。
+          json(res, 200, { ok: true, workspaces: listWorkspaces(ctx.workspaceRegistry) })
+          return
+        }
+
+        if (route === 'state' && req.method === 'GET') {
+          // 全量快照（§3 契约）：path 钉死在注册表白名单内后才进解析层；
+          // 单个坏文件进 warnings 不炸快照。
+          const novelDir = resolveNovelRoot(url.searchParams.get('path'), ctx.workspaceRegistry)
+          json(res, 200, parseStateSnapshot(novelDir))
+          return
+        }
+
+        if (route === 'chapter' && req.method === 'GET') {
+          // 章节正文全文（抽屉用）：file 只认 chapters/ 下纯文件名。
+          const novelDir = resolveNovelRoot(url.searchParams.get('path'), ctx.workspaceRegistry)
+          json(res, 200, readChapter(novelDir, url.searchParams.get('file')))
+          return
+        }
+
+        if (route === 'chapter-status' && req.method === 'POST') {
+          const body = await readBody(req)
+          const novelDir = resolveNovelRoot(body.path, ctx.workspaceRegistry)
+          json(res, 200, mutateChapterStatus(novelDir, body.file, body.status))
+          return
+        }
+
+        if (route === 'foreshadow-status' && req.method === 'POST') {
+          const body = await readBody(req)
+          const novelDir = resolveNovelRoot(body.path, ctx.workspaceRegistry)
+          json(res, 200, mutateForeshadowStatus(novelDir, body.id, body.status))
+          return
+        }
+
+        if (route === 'phase' && req.method === 'POST') {
+          const body = await readBody(req)
+          const novelDir = resolveNovelRoot(body.path, ctx.workspaceRegistry)
+          json(res, 200, mutatePhase(novelDir, body.phase))
+          return
+        }
+
+        if (route === 'rebuild-index' && req.method === 'POST') {
+          const body = await readBody(req)
+          const novelDir = resolveNovelRoot(body.path, ctx.workspaceRegistry)
+          json(res, 200, rebuildIndex(novelDir))
+          return
+        }
+
+        json(res, 404, { ok: false, error: `no such route: ${req.method} /api/maoying/${route}` })
+      } catch (err) {
+        // 错误原文（可能带本机绝对路径）留日志；对外 message 先脱敏。读体的
+        // 413/400 带 statusCode，按其状态码回；其余业务错误自带码，裸异常 500。
+        ctx.logger?.warn?.('maoying 创作台: 请求处理失败: ' + String(err?.message ?? err))
+        json(res, Number.isInteger(err?.statusCode) ? err.statusCode : 500, {
+          ok: false,
+          error: sanitizeMessage(err?.message ?? String(err)),
+        })
+      }
+    },
+  })
+}
+
 // ── 安装主流程 ──────────────────────────────────────────────────────────────
 
 /**
@@ -502,5 +752,16 @@ export function apply(ctx = {}, _config = {}) {
     }
   } catch {
     /* 版本探测失败不提示——检查本身就是锦上添花 */
+  }
+
+  // 创作台路由（三期）：与安装段彼此独立——注册失败只 warn，面板不可用不
+  // 拖累安装器语义。注册是异步的（含 duplicate 短重试），这里挂 .catch 兜住
+  // 异步失败；同步抛错走外层 try/catch，两条路都不让异常冒出 apply。
+  try {
+    registerCreatorRoutes(ctx).catch((error) => {
+      logger.warn?.(`毛颖创作台路由注册失败（面板不可用，其余功能不受影响）: ${error?.message ?? error}`)
+    })
+  } catch (error) {
+    logger.warn?.(`毛颖创作台路由注册失败（面板不可用，其余功能不受影响）: ${error?.message ?? error}`)
   }
 }

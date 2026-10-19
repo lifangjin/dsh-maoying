@@ -1,0 +1,594 @@
+/* maoying-creator / base — 毛颖创作台面板样式（.myt- 前缀，零构建）。
+   全部颜色走 DSH 设计令牌（--dsw-alias-*，宿主运行时注入，浅/深色主题经
+   body[data-ds-dark-theme] 自动跟随）；派生色一律 color-mix 就地调，不另立
+   常量。本文件由 Node 侧 GET /api/maoying/client.css 现读下发，客户端只在
+   首次物化时注入 <link data-plugin-css="maoying-creator/base">。 */
+
+/* ── 侧栏底部入口（sidebar.footer.action 键控槽）────────────────────────
+   宽栏 42px 圆角行（图标 + 文案）/ 窄栏 36px 圆钮，观感照设置壳动作条。 */
+.myt-footerBtn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 42px;
+  height: 42px;
+  flex: none;
+  padding: 0;
+  box-sizing: border-box;
+  border: 1px solid transparent;
+  border-radius: 12px;
+  background: transparent;
+  color: var(--dsw-alias-label-secondary);
+  cursor: pointer;
+  justify-content: center;
+  overflow: hidden;
+  font: inherit;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+.myt-footerBtn:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+  color: var(--dsw-alias-label-primary);
+}
+.myt-footerBtn[data-active="true"] {
+  background: color-mix(in srgb, var(--dsw-alias-state-business-primary) 16%, transparent);
+  color: var(--dsw-alias-state-business-primary);
+}
+.myt-footerLabel {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 500;
+}
+.myt-footerBtn.myt-footerRail {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+}
+
+/* ── 全页 overlay（data-dsh-maoying-view / html[data-dsh-maoying-active]）──
+   机制照 dsh-mnemon：会话中栏转 relative，overlay 绝对铺满；打开态靠 <html>
+   active 属性切换显隐并藏掉中栏其余子元素。与 mnemon / taskboard / ssh /
+   paoding 四家全页面板互斥（:not() 链，点亮谁谁显示）。 */
+[data-pane="conversation"],
+[class*="centerCol"],
+.dshDesktopConversationSurface {
+  position: relative;
+}
+[data-dsh-maoying-view] {
+  position: absolute;
+  inset: 0;
+  z-index: 10;
+  display: none;
+  background: var(--dsw-alias-bg-base, var(--dsw-alias-bg-layer-1));
+}
+.myt-view { isolation: isolate; }
+html[data-dsh-maoying-active]:not([data-dsh-mnemon-active]):not([data-dsh-taskboard-active]):not([data-dsh-ssh-active]):not([data-dsh-paoding-active]) [data-dsh-maoying-view] { display: block; }
+html[data-dsh-maoying-active]:not([data-dsh-mnemon-active]):not([data-dsh-taskboard-active]):not([data-dsh-ssh-active]):not([data-dsh-paoding-active]) [data-pane="conversation"] > :not([data-dsh-maoying-view]),
+html[data-dsh-maoying-active]:not([data-dsh-mnemon-active]):not([data-dsh-taskboard-active]):not([data-dsh-ssh-active]):not([data-dsh-paoding-active]) [class*="centerCol"] > :not([data-dsh-maoying-view]),
+html[data-dsh-maoying-active]:not([data-dsh-mnemon-active]):not([data-dsh-taskboard-active]):not([data-dsh-ssh-active]):not([data-dsh-paoding-active]) .dshDesktopConversationSurface > :not([data-dsh-maoying-view]) {
+  display: none !important;
+}
+
+/* ── 页面骨架：顶栏 + 内容滚动区 ───────────────────────────────────────── */
+.myt-shell {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-width: 0;
+}
+.myt-header {
+  flex: none;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 20px 24px 12px;
+}
+.myt-title { margin: 0; font-size: 20px; line-height: 28px; font-weight: 600; color: var(--dsw-alias-label-primary); }
+.myt-subtitle { margin: 4px 0 0; font-size: 12px; line-height: 18px; color: var(--dsw-alias-label-tertiary); }
+.myt-headActions { display: flex; align-items: center; gap: 8px; flex: none; padding-top: 2px; }
+.myt-closeBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  flex: none;
+  padding: 0;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--dsw-alias-label-secondary);
+  cursor: pointer;
+}
+.myt-closeBtn:hover { background: var(--dsw-alias-interactive-bg-hover); color: var(--dsw-alias-label-primary); }
+.myt-closeGlyph { font-size: 18px; line-height: 1; }
+
+/* 内容区：自身滚动容器 */
+.myt-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 0 24px 32px;
+}
+.myt-page { display: flex; flex-direction: column; gap: 16px; max-width: 980px; }
+
+/* ── 通用按钮 / 下拉 ───────────────────────────────────────────────────── */
+.myt-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 5px 12px;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 8px;
+  background: var(--dsw-alias-bg-layer-2);
+  color: var(--dsw-alias-label-primary);
+  font: inherit;
+  font-size: 12px;
+  line-height: 18px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.12s ease, border-color 0.12s ease;
+}
+.myt-btn:hover:not(:disabled) { background: var(--dsw-alias-interactive-bg-hover); }
+.myt-btn:disabled { opacity: 0.5; cursor: default; }
+.myt-btnPrimary {
+  background: var(--dsw-alias-button-primary-fill, var(--dsw-alias-state-business-primary));
+  border-color: transparent;
+  color: var(--dsw-alias-label-primary-inverted, #fff);
+}
+.myt-btnPrimary:hover:not(:disabled) { filter: brightness(1.08); background: var(--dsw-alias-button-primary-fill, var(--dsw-alias-state-business-primary)); }
+.myt-btnDanger {
+  border-color: color-mix(in srgb, var(--dsw-alias-state-error-primary) 40%, transparent);
+  color: var(--dsw-alias-state-error-primary);
+}
+.myt-btnIcon { padding: 5px 7px; }
+.myt-wsSelect {
+  max-width: 260px;
+  padding: 5px 28px 5px 10px;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 8px;
+  background: var(--dsw-alias-bg-layer-2);
+  color: var(--dsw-alias-label-primary);
+  font: inherit;
+  font-size: 12px;
+  line-height: 18px;
+  cursor: pointer;
+}
+.myt-wsLabel { font-size: 12px; color: var(--dsw-alias-label-tertiary); white-space: nowrap; }
+
+/* ── tab 条 ────────────────────────────────────────────────────────────── */
+.myt-tabs {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 24px 10px;
+  border-bottom: 1px solid var(--dsw-alias-border-l1);
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.myt-tab {
+  padding: 6px 12px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--dsw-alias-label-secondary);
+  font: inherit;
+  font-size: 13px;
+  line-height: 18px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.myt-tab:hover { background: var(--dsw-alias-interactive-bg-hover); color: var(--dsw-alias-label-primary); }
+.myt-tab[data-active="true"] {
+  background: color-mix(in srgb, var(--dsw-alias-state-business-primary) 14%, transparent);
+  color: var(--dsw-alias-state-business-primary);
+  font-weight: 600;
+}
+
+/* ── 卡片 / 栅格 ───────────────────────────────────────────────────────── */
+.myt-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 16px;
+  box-sizing: border-box;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 14px;
+  background: var(--dsw-alias-bg-layer-3);
+}
+.myt-cardHead { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.myt-cardTitle { margin: 0; font-size: 13px; line-height: 20px; font-weight: 600; color: var(--dsw-alias-label-primary); }
+.myt-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; }
+.myt-stack { display: flex; flex-direction: column; gap: 12px; }
+.myt-muted { color: var(--dsw-alias-label-tertiary); font-size: 12px; }
+/* ── 徽章 / pill（状态命名空间全局统一）────────────────────────────────── */
+.myt-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  line-height: 16px;
+  font-weight: 500;
+  white-space: nowrap;
+  border: 1px solid transparent;
+  background: var(--dsw-alias-bg-layer-2);
+  color: var(--dsw-alias-label-secondary);
+}
+.myt-badge[data-status="pending"] { color: var(--dsw-alias-label-secondary); background: var(--dsw-alias-bg-layer-2); border-color: var(--dsw-alias-border-l2); }
+.myt-badge[data-status="writing"] { color: var(--dsw-alias-state-business-primary); background: color-mix(in srgb, var(--dsw-alias-state-business-primary) 12%, transparent); border-color: color-mix(in srgb, var(--dsw-alias-state-business-primary) 36%, transparent); }
+.myt-badge[data-status="review"] { color: var(--dsw-alias-state-warn-primary); background: color-mix(in srgb, var(--dsw-alias-state-warn-primary) 12%, transparent); border-color: color-mix(in srgb, var(--dsw-alias-state-warn-primary) 36%, transparent); }
+.myt-badge[data-status="accepted"] { color: var(--dsw-alias-state-success-primary); background: color-mix(in srgb, var(--dsw-alias-state-success-primary) 12%, transparent); border-color: color-mix(in srgb, var(--dsw-alias-state-success-primary) 36%, transparent); }
+
+/* phase 七态 pill 七色：令牌系只有四基色，其余三色 color-mix 调出
+   （紫=蓝红调 / 青=蓝绿调 / 靛=蓝灰调），主题切换照常跟随。 */
+.myt-phase {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  line-height: 16px;
+  font-weight: 500;
+  border: 1px solid transparent;
+  white-space: nowrap;
+}
+.myt-phase[data-phase="idea"] { color: color-mix(in srgb, var(--dsw-alias-state-business-primary) 55%, var(--dsw-alias-state-error-primary)); background: color-mix(in srgb, var(--dsw-alias-state-business-primary) 10%, var(--dsw-alias-state-error-primary) 8%, transparent); border-color: color-mix(in srgb, var(--dsw-alias-state-business-primary) 40%, var(--dsw-alias-state-error-primary) 30%, transparent); }
+.myt-phase[data-phase="setting"] { color: color-mix(in srgb, var(--dsw-alias-state-business-primary) 50%, var(--dsw-alias-state-success-primary)); background: color-mix(in srgb, var(--dsw-alias-state-business-primary) 9%, var(--dsw-alias-state-success-primary) 9%, transparent); border-color: color-mix(in srgb, var(--dsw-alias-state-business-primary) 35%, var(--dsw-alias-state-success-primary) 35%, transparent); }
+.myt-phase[data-phase="outline"] { color: var(--dsw-alias-state-business-primary); background: color-mix(in srgb, var(--dsw-alias-state-business-primary) 12%, transparent); border-color: color-mix(in srgb, var(--dsw-alias-state-business-primary) 36%, transparent); }
+.myt-phase[data-phase="writing"] { color: color-mix(in srgb, var(--dsw-alias-state-business-primary) 80%, var(--dsw-alias-label-secondary)); background: color-mix(in srgb, var(--dsw-alias-state-business-primary) 16%, transparent); border-color: color-mix(in srgb, var(--dsw-alias-state-business-primary) 45%, transparent); }
+.myt-phase[data-phase="review"] { color: var(--dsw-alias-state-warn-primary); background: color-mix(in srgb, var(--dsw-alias-state-warn-primary) 12%, transparent); border-color: color-mix(in srgb, var(--dsw-alias-state-warn-primary) 36%, transparent); }
+.myt-phase[data-phase="consistency"] { color: color-mix(in srgb, var(--dsw-alias-state-warn-primary) 60%, var(--dsw-alias-state-error-primary)); background: color-mix(in srgb, var(--dsw-alias-state-warn-primary) 10%, var(--dsw-alias-state-error-primary) 8%, transparent); border-color: color-mix(in srgb, var(--dsw-alias-state-warn-primary) 35%, var(--dsw-alias-state-error-primary) 30%, transparent); }
+.myt-phase[data-phase="export"] { color: var(--dsw-alias-state-success-primary); background: color-mix(in srgb, var(--dsw-alias-state-success-primary) 12%, transparent); border-color: color-mix(in srgb, var(--dsw-alias-state-success-primary) 36%, transparent); }
+
+/* 角色徽章四色（role 自由文本，JS 按关键词归 tone）*/
+.myt-roleBadge { border: 1px solid transparent; }
+.myt-roleBadge[data-tone="a"] { color: var(--dsw-alias-state-error-primary); background: color-mix(in srgb, var(--dsw-alias-state-error-primary) 10%, transparent); border-color: color-mix(in srgb, var(--dsw-alias-state-error-primary) 34%, transparent); }
+.myt-roleBadge[data-tone="b"] { color: var(--dsw-alias-state-warn-primary); background: color-mix(in srgb, var(--dsw-alias-state-warn-primary) 10%, transparent); border-color: color-mix(in srgb, var(--dsw-alias-state-warn-primary) 34%, transparent); }
+.myt-roleBadge[data-tone="c"] { color: var(--dsw-alias-state-business-primary); background: color-mix(in srgb, var(--dsw-alias-state-business-primary) 10%, transparent); border-color: color-mix(in srgb, var(--dsw-alias-state-business-primary) 34%, transparent); }
+.myt-roleBadge[data-tone="d"] { color: var(--dsw-alias-state-success-primary); background: color-mix(in srgb, var(--dsw-alias-state-success-primary) 10%, transparent); border-color: color-mix(in srgb, var(--dsw-alias-state-success-primary) 34%, transparent); }
+
+/* 伏笔优先级色点（high 红 / normal 灰 / low 淡）*/
+.myt-priDot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; flex: none; }
+.myt-priDot[data-pri="high"] { background: var(--dsw-alias-state-error-primary); }
+.myt-priDot[data-pri="normal"] { background: var(--dsw-alias-label-tertiary); }
+.myt-priDot[data-pri="low"] { background: color-mix(in srgb, var(--dsw-alias-label-tertiary) 45%, transparent); }
+
+/* 状态分布条（概览统计卡）*/
+.myt-distBar { display: flex; height: 8px; border-radius: 999px; overflow: hidden; background: var(--dsw-alias-bg-layer-2); }
+.myt-distSeg { height: 100%; min-width: 0; }
+.myt-distSeg[data-status="pending"] { background: var(--dsw-alias-border-l4, var(--dsw-alias-label-tertiary)); }
+.myt-distSeg[data-status="writing"] { background: var(--dsw-alias-state-business-primary); }
+.myt-distSeg[data-status="review"] { background: var(--dsw-alias-state-warn-primary); }
+.myt-distSeg[data-status="accepted"] { background: var(--dsw-alias-state-success-primary); }
+
+/* ── 提示条（warnings 黄条 / 错误红条）─────────────────────────────────── */
+.myt-strip {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 8px 12px;
+  box-sizing: border-box;
+  border: 1px solid var(--dsw-alias-border-l1);
+  border-radius: 12px;
+  background: var(--dsw-alias-bg-layer-2);
+  color: var(--dsw-alias-label-secondary);
+  font-size: 12px;
+  line-height: 18px;
+}
+.myt-stripIcon { display: inline-flex; flex: none; }
+.myt-stripText { min-width: 0; overflow-wrap: anywhere; }
+.myt-stripWarn { border-color: color-mix(in srgb, var(--dsw-alias-state-warn-primary) 40%, transparent); background: color-mix(in srgb, var(--dsw-alias-state-warn-primary) 10%, transparent); color: var(--dsw-alias-state-warn-primary);}
+.myt-stripError {
+  border-color: color-mix(in srgb, var(--dsw-alias-state-error-primary) 40%, transparent);
+  background: color-mix(in srgb, var(--dsw-alias-state-error-primary) 10%, transparent);
+  color: var(--dsw-alias-state-error-primary);
+}
+
+/* ── 空态 / 骨架 / 加载 ────────────────────────────────────────────────── */
+.myt-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 32px 16px;
+  border: 1px dashed var(--dsw-alias-border-l2);
+  border-radius: 14px;
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 12px;
+  text-align: center;
+}
+.myt-skel {
+  position: relative;
+  overflow: hidden;
+  border-radius: 8px;
+  background: var(--dsw-alias-bg-layer-2);
+  min-height: 12px;
+}
+.myt-skel::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--dsw-alias-label-tertiary) 18%, transparent), transparent);
+  animation: myt-skel-sweep 1.4s ease infinite;
+}
+@keyframes myt-skel-sweep { to { transform: translateX(100%); } }
+.myt-skelCard { height: 120px; border: 1px solid var(--dsw-alias-border-l2); border-radius: 14px; background: var(--dsw-alias-bg-layer-3); display: flex; flex-direction: column; gap: 10px; padding: 16px; box-sizing: border-box; }
+.myt-skelRow { height: 14px; }
+/* ── 概览：书稿卡 / 统计卡 / 最近更新 ──────────────────────────────────── */
+.myt-hero { gap: 12px; }
+.myt-heroTitle { margin: 0; font-size: 24px; line-height: 32px; font-weight: 700; color: var(--dsw-alias-label-primary); overflow-wrap: anywhere; }
+.myt-heroMeta { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.myt-heroDesc { margin: 0; font-size: 13px; line-height: 20px; color: var(--dsw-alias-label-secondary); overflow-wrap: anywhere; white-space: pre-wrap; }
+.myt-statRow { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; }
+.myt-stat { display: flex; flex-direction: column; gap: 4px; }
+.myt-statNum { font-size: 22px; line-height: 28px; font-weight: 700; color: var(--dsw-alias-label-primary); font-variant-numeric: tabular-nums; }
+.myt-statLabel { font-size: 11px; line-height: 16px; color: var(--dsw-alias-label-tertiary); }
+.myt-recentList { display: flex; flex-direction: column; }
+.myt-recentRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 2px;
+  border: none;
+  border-bottom: 1px solid var(--dsw-alias-border-l1);
+  background: transparent;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.myt-recentRow:last-child { border-bottom: none; }
+.myt-recentRow:hover .myt-chTitle { color: var(--dsw-alias-state-business-primary); }
+.myt-chTitle { min-width: 0; flex: 1 1 auto; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: 13px; color: var(--dsw-alias-label-primary); }
+.myt-chPath { flex: none; font-size: 11px; color: var(--dsw-alias-label-tertiary); font-variant-numeric: tabular-nums; }
+.myt-wordsCell { flex: none; font-size: 11px; color: var(--dsw-alias-label-tertiary); font-variant-numeric: tabular-nums; }
+
+/* ── 章节 tab：筛选 pills + 表格 ───────────────────────────────────────── */
+.myt-filterRow { display: flex; flex-wrap: wrap; gap: 6px; }
+.myt-filterPill {
+  padding: 3px 10px;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 999px;
+  background: var(--dsw-alias-bg-layer-2);
+  color: var(--dsw-alias-label-secondary);
+  font: inherit;
+  font-size: 12px;
+  line-height: 18px;
+  cursor: pointer;
+}
+.myt-filterPill:hover { background: var(--dsw-alias-interactive-bg-hover); }
+.myt-filterPill[data-active="true"] { border-color: var(--dsw-alias-state-business-primary); color: var(--dsw-alias-state-business-primary); background: color-mix(in srgb, var(--dsw-alias-state-business-primary) 10%, transparent); font-weight: 600; }
+.myt-tableWrap { border: 1px solid var(--dsw-alias-border-l2); border-radius: 14px; background: var(--dsw-alias-bg-layer-3); overflow-x: auto; }
+.myt-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.myt-table th {
+  position: sticky;
+  top: 0;
+  padding: 8px 12px;
+  text-align: left;
+  background: var(--dsw-alias-bg-layer-2);
+  color: var(--dsw-alias-label-tertiary);
+  font-weight: 500;
+  white-space: nowrap;
+  border-bottom: 1px solid var(--dsw-alias-border-l1);
+}
+.myt-table td { padding: 8px 12px; border-bottom: 1px solid var(--dsw-alias-border-l1); color: var(--dsw-alias-label-secondary); vertical-align: top; }
+.myt-table tbody tr:last-child td { border-bottom: none; }
+.myt-table tbody tr { cursor: pointer; }
+.myt-table tbody tr:hover { background: var(--dsw-alias-interactive-bg-hover); }
+.myt-summaryCell { max-width: 320px; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+
+/* 章节抽屉 */
+.myt-drawerMask {
+  position: fixed;
+  inset: 0;
+  z-index: 70;
+  display: flex;
+  align-items: stretch;
+  justify-content: flex-end;
+  background: color-mix(in srgb, var(--dsw-alias-bg-base, #000) 55%, transparent);
+}
+.myt-drawer {
+  display: flex;
+  flex-direction: column;
+  width: min(560px, 92vw);
+  margin: 0;
+  background: var(--dsw-alias-bg-layer-2);
+  border-left: 1px solid var(--dsw-alias-border-l2);
+  box-shadow: -12px 0 32px color-mix(in srgb, #000 25%, transparent);
+}
+.myt-drawerHead { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 16px; border-bottom: 1px solid var(--dsw-alias-border-l1); }
+.myt-drawerTitle { margin: 0; min-width: 0; font-size: 14px; line-height: 20px; font-weight: 600; color: var(--dsw-alias-label-primary); overflow-wrap: anywhere; }
+.myt-drawerBody { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: 14px 16px; display: flex; flex-direction: column; gap: 12px; }
+.myt-drawerFoot { flex: none; display: flex; align-items: center; gap: 8px; padding: 12px 16px; border-top: 1px solid var(--dsw-alias-border-l1); }
+.myt-chapterBody {
+  margin: 0;
+  padding: 12px;
+  border: 1px solid var(--dsw-alias-border-l1);
+  border-radius: 10px;
+  background: var(--dsw-alias-bg-layer-1, var(--dsw-alias-bg-layer-2));
+  color: var(--dsw-alias-label-primary);
+  font-size: 13px;
+  line-height: 22px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 48vh;
+  overflow-y: auto;
+}
+.myt-dimGrid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.myt-dim { padding: 8px 10px; border: 1px solid var(--dsw-alias-border-l1); border-radius: 10px; background: var(--dsw-alias-bg-layer-3); }
+.myt-dimLabel { font-size: 11px; line-height: 16px; color: var(--dsw-alias-label-tertiary); margin-bottom: 2px; }
+.myt-dimText { font-size: 12px; line-height: 18px; color: var(--dsw-alias-label-secondary); overflow-wrap: anywhere; }
+
+/* ── 角色 tab：卡墙 + 全卡弹层 ─────────────────────────────────────────── */
+.myt-charWall { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 12px; }
+.myt-charCard { cursor: pointer; gap: 8px; text-align: left; }
+.myt-charCard:hover { border-color: var(--dsw-alias-border-l4, var(--dsw-alias-border-l2)); }
+.myt-charHead { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.myt-charName { font-size: 14px; line-height: 20px; font-weight: 600; color: var(--dsw-alias-label-primary); min-width: 0; overflow-wrap: anywhere; }
+.myt-charMeta { font-size: 11px; color: var(--dsw-alias-label-tertiary); }
+.myt-charLine { font-size: 12px; line-height: 18px; color: var(--dsw-alias-label-secondary); overflow-wrap: anywhere; }
+.myt-charLabel { flex: none; font-size: 11px; color: var(--dsw-alias-label-tertiary); }
+.myt-modalMask {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: color-mix(in srgb, var(--dsw-alias-bg-base, #000) 55%, transparent);
+}
+.myt-modalCard {
+  display: flex;
+  flex-direction: column;
+  width: min(520px, 94vw);
+  max-height: 84vh;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 16px;
+  background: var(--dsw-alias-bg-layer-2);
+  box-shadow: 0 16px 48px color-mix(in srgb, #000 30%, transparent);
+}
+.myt-modalHead { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 16px; border-bottom: 1px solid var(--dsw-alias-border-l1); }
+.myt-modalTitle { margin: 0; min-width: 0; font-size: 14px; line-height: 20px; font-weight: 600; color: var(--dsw-alias-label-primary); overflow-wrap: anywhere; }
+.myt-modalBody { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: 14px 16px; display: flex; flex-direction: column; gap: 10px; }
+.myt-kvRow { display: flex; gap: 10px; font-size: 12px; line-height: 18px; }
+.myt-kvKey { flex: none; width: 64px; color: var(--dsw-alias-label-tertiary); }
+.myt-kvVal { min-width: 0; color: var(--dsw-alias-label-secondary); overflow-wrap: anywhere; white-space: pre-wrap; }
+.myt-markerTag { display: inline-flex; padding: 1px 8px; border-radius: 999px; background: color-mix(in srgb, var(--dsw-alias-state-business-primary) 10%, transparent); color: var(--dsw-alias-state-business-primary); font-size: 11px; line-height: 16px; }
+
+/* ── 伏笔看板：四列 ────────────────────────────────────────────────────── */
+.myt-board { display: grid; grid-template-columns: repeat(4, minmax(180px, 1fr)); gap: 12px; align-items: start; }
+@media (max-width: 900px) { .myt-board { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.myt-boardCol { display: flex; flex-direction: column; gap: 8px; padding: 10px; border: 1px solid var(--dsw-alias-border-l1); border-radius: 14px; background: color-mix(in srgb, var(--dsw-alias-bg-layer-2) 60%, transparent); min-height: 80px; }
+.myt-boardHead { display: flex; align-items: center; gap: 6px; padding: 2px 4px; }
+.myt-boardTitle { font-size: 12px; font-weight: 600; color: var(--dsw-alias-label-primary); }
+.myt-boardCount { padding: 0 7px; border-radius: 999px; background: var(--dsw-alias-bg-layer-3); color: var(--dsw-alias-label-secondary); font-size: 11px; line-height: 16px; font-variant-numeric: tabular-nums; }
+.myt-fsCard { display: flex; flex-direction: column; gap: 6px; padding: 10px; border: 1px solid var(--dsw-alias-border-l2); border-radius: 12px; background: var(--dsw-alias-bg-layer-3); }
+.myt-fsTitle { display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; color: var(--dsw-alias-label-primary); overflow-wrap: anywhere; }
+.myt-fsMeta { display: flex; flex-wrap: wrap; gap: 6px; font-size: 11px; color: var(--dsw-alias-label-tertiary); font-variant-numeric: tabular-nums; }
+.myt-fsNotes { font-size: 11px; line-height: 16px; color: var(--dsw-alias-label-tertiary); overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.myt-fsActions { display: flex; flex-wrap: wrap; gap: 6px; }
+.myt-fsActions .myt-btn { padding: 2px 8px; font-size: 11px; line-height: 16px; }
+
+/* ── 关系图：canvas 容器 ───────────────────────────────────────────────── */
+.myt-graphWrap { position: relative; height: 480px; border: 1px solid var(--dsw-alias-border-l2); border-radius: 14px; background: var(--dsw-alias-bg-layer-3); overflow: hidden; }
+.myt-graphCanvas { display: block; width: 100%; height: 100%; cursor: grab; }
+.myt-graphCanvas[data-dragging="true"] { cursor: grabbing; }
+.myt-graphTip {
+  position: absolute;
+  max-width: 260px;
+  padding: 6px 10px;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 10px;
+  background: var(--dsw-alias-bg-layer-2);
+  color: var(--dsw-alias-label-secondary);
+  font-size: 11px;
+  line-height: 16px;
+  pointer-events: none;
+  box-shadow: 0 6px 20px color-mix(in srgb, #000 20%, transparent);
+  overflow-wrap: anywhere;
+}
+.myt-graphFoot { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; color: var(--dsw-alias-label-tertiary); font-size: 11px; }
+.myt-unlinked { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.myt-unlinkedTag { padding: 1px 8px; border-radius: 999px; border: 1px dashed var(--dsw-alias-border-l2); color: var(--dsw-alias-label-tertiary); font-size: 11px; line-height: 16px; }
+
+/* ── 时间线：垂直轴 ────────────────────────────────────────────────────── */
+.myt-timeline { display: flex; flex-direction: column; }
+.myt-tlRow { display: grid; grid-template-columns: 84px 20px 1fr; gap: 0 10px; }
+.myt-tlYear { padding-top: 10px; font-size: 12px; font-weight: 600; color: var(--dsw-alias-label-secondary); text-align: right; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.myt-tlAxis { position: relative; }
+.myt-tlAxis::before { content: ""; position: absolute; left: 50%; top: 0; bottom: 0; width: 2px; transform: translateX(-50%); background: var(--dsw-alias-border-l2); }
+.myt-tlDot { position: absolute; left: 50%; top: 16px; width: 8px; height: 8px; border-radius: 50%; transform: translate(-50%, -50%); background: var(--dsw-alias-label-tertiary); box-shadow: 0 0 0 3px var(--dsw-alias-bg-layer-3, transparent); }
+.myt-tlDot[data-imp="1"] { width: 6px; height: 6px; background: color-mix(in srgb, var(--dsw-alias-state-business-primary) 35%, transparent); }
+.myt-tlDot[data-imp="2"] { width: 7px; height: 7px; background: color-mix(in srgb, var(--dsw-alias-state-business-primary) 55%, transparent); }
+.myt-tlDot[data-imp="3"] { width: 8px; height: 8px; background: var(--dsw-alias-state-business-primary); }
+.myt-tlDot[data-imp="4"] { width: 10px; height: 10px; background: color-mix(in srgb, var(--dsw-alias-state-business-primary) 80%, var(--dsw-alias-state-error-primary)); }
+.myt-tlDot[data-imp="5"] { width: 12px; height: 12px; background: var(--dsw-alias-state-error-primary); }
+.myt-tlCard { margin: 6px 0 14px; padding: 10px 12px; border: 1px solid var(--dsw-alias-border-l1); border-radius: 12px; background: var(--dsw-alias-bg-layer-3); }
+.myt-tlTitle { font-size: 13px; font-weight: 600; color: var(--dsw-alias-label-primary); overflow-wrap: anywhere; }
+.myt-tlDesc { margin-top: 4px; font-size: 12px; line-height: 18px; color: var(--dsw-alias-label-secondary); overflow-wrap: anywhere; white-space: pre-wrap; }
+.myt-tlChapter { margin-top: 6px; font-size: 11px; color: var(--dsw-alias-label-tertiary); font-variant-numeric: tabular-nums; }
+
+/* ── 设定：world 分组 + science 三色标签 ───────────────────────────────── */
+.myt-worldGroup { display: flex; flex-direction: column; gap: 8px; }
+.myt-worldItem { padding: 10px 12px; border: 1px solid var(--dsw-alias-border-l1); border-radius: 12px; background: var(--dsw-alias-bg-layer-3); display: flex; flex-direction: column; gap: 6px; }
+.myt-worldHead { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.myt-worldName { font-size: 13px; font-weight: 600; color: var(--dsw-alias-label-primary); overflow-wrap: anywhere; }
+.myt-worldDesc { font-size: 12px; line-height: 18px; color: var(--dsw-alias-label-secondary); overflow-wrap: anywhere; white-space: pre-wrap; }
+.myt-tagRow { display: flex; flex-wrap: wrap; gap: 4px; }
+.myt-tag { padding: 0 7px; border-radius: 999px; background: var(--dsw-alias-bg-layer-2); border: 1px solid var(--dsw-alias-border-l1); color: var(--dsw-alias-label-tertiary); font-size: 11px; line-height: 16px; }
+.myt-sciTag { border: 1px solid transparent; }
+.myt-sciTag[data-label="known"] { color: var(--dsw-alias-state-success-primary); background: color-mix(in srgb, var(--dsw-alias-state-success-primary) 10%, transparent); border-color: color-mix(in srgb, var(--dsw-alias-state-success-primary) 34%, transparent); }
+.myt-sciTag[data-label="extrapolation"] { color: var(--dsw-alias-state-warn-primary); background: color-mix(in srgb, var(--dsw-alias-state-warn-primary) 10%, transparent); border-color: color-mix(in srgb, var(--dsw-alias-state-warn-primary) 34%, transparent); }
+.myt-sciTag[data-label="hypothesis"] { color: color-mix(in srgb, var(--dsw-alias-state-business-primary) 55%, var(--dsw-alias-state-error-primary)); background: color-mix(in srgb, var(--dsw-alias-state-business-primary) 10%, var(--dsw-alias-state-error-primary) 8%, transparent); border-color: color-mix(in srgb, var(--dsw-alias-state-business-primary) 40%, var(--dsw-alias-state-error-primary) 30%, transparent); }
+.myt-refList { display: flex; flex-direction: column; gap: 2px; }
+.myt-refItem { font-size: 11px; line-height: 16px; color: var(--dsw-alias-label-tertiary); overflow-wrap: anywhere; }
+
+/* ── 索引板：clues 分组 + memories 分组 ────────────────────────────────── */
+.myt-indexCols { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 12px; align-items: start; }
+.myt-clueItem { display: flex; gap: 8px; padding: 6px 2px; border-bottom: 1px solid var(--dsw-alias-border-l1); font-size: 12px; line-height: 18px; color: var(--dsw-alias-label-secondary); }
+.myt-clueItem:last-child { border-bottom: none; }
+.myt-clueItem[data-resolved="true"] .myt-clueText { text-decoration: line-through; color: var(--dsw-alias-label-tertiary); }
+.myt-clueText { min-width: 0; overflow-wrap: anywhere; }
+.myt-clueChapter { flex: none; font-size: 11px; color: var(--dsw-alias-label-tertiary); font-variant-numeric: tabular-nums; }
+.myt-memItem { display: flex; gap: 8px; padding: 6px 2px; border-bottom: 1px solid var(--dsw-alias-border-l1); font-size: 12px; line-height: 18px; color: var(--dsw-alias-label-secondary); }
+.myt-memItem:last-child { border-bottom: none; }
+.myt-memItem[data-promise="true"] { border-radius: 8px; background: color-mix(in srgb, var(--dsw-alias-state-warn-primary) 8%, transparent); }
+.myt-memItem[data-promise="true"] .myt-clueText { color: var(--dsw-alias-state-warn-primary); }
+.myt-memChapter { flex: none; font-size: 11px; color: var(--dsw-alias-label-tertiary); font-variant-numeric: tabular-nums; }
+.myt-listHead { display: flex; align-items: center; gap: 8px; padding: 4px 2px 8px; font-size: 12px; font-weight: 600; color: var(--dsw-alias-label-primary); }
+
+/* ── 引导卡（未初始化工作区）────────────────────────────────────────────── */
+.myt-guide { align-items: flex-start; gap: 10px; }
+.myt-guideTitle { margin: 0; font-size: 14px; line-height: 20px; font-weight: 600; color: var(--dsw-alias-label-primary); }
+.myt-guideText { margin: 0; font-size: 12px; line-height: 18px; color: var(--dsw-alias-label-secondary); }
+.myt-guideCode { display: flex; align-items: center; gap: 8px; width: 100%; padding: 8px 10px; box-sizing: border-box; border: 1px solid var(--dsw-alias-border-l1); border-radius: 10px; background: var(--dsw-alias-bg-layer-2); }
+.myt-guideCodeText { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; color: var(--dsw-alias-state-business-primary); }
+.myt-copyBtn { padding: 2px 8px; font-size: 11px; line-height: 16px; }
+
+/* ── toast（fixed 悬浮，host 不挡点击）─────────────────────────────────── */
+.myt-toastHost {
+  position: fixed;
+  left: 50%;
+  bottom: 28px;
+  transform: translateX(-50%);
+  z-index: 90;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  pointer-events: none;
+}
+.myt-toast {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  max-width: min(520px, 86vw);
+  padding: 8px 12px;
+  box-sizing: border-box;
+  border-radius: 12px;
+  border: 1px solid var(--dsw-alias-border-l2);
+  background: var(--dsw-alias-bg-layer-2);
+  color: var(--dsw-alias-label-primary);
+  font-size: 12px;
+  line-height: 18px;
+  box-shadow: 0 8px 28px color-mix(in srgb, #000 24%, transparent);
+  pointer-events: auto;
+}
+.myt-toastText { min-width: 0; max-height: 120px; overflow-y: auto; overflow-wrap: anywhere; }
+.myt-toastOk { border-color: color-mix(in srgb, var(--dsw-alias-state-success-primary) 40%, transparent); }
+.myt-toastWarn { border-color: color-mix(in srgb, var(--dsw-alias-state-warn-primary) 40%, transparent); }
+.myt-toastErr { border-color: color-mix(in srgb, var(--dsw-alias-state-error-primary) 50%, transparent); }
+.myt-toastClose {
+  flex: none; display: inline-flex; align-items: center; justify-content: center;
+  width: 18px; height: 18px; padding: 0; border: none; border-radius: 6px;
+  background: transparent; color: var(--dsw-alias-label-tertiary);
+  cursor: pointer; font-size: 14px; line-height: 1;
+}
+.myt-toastClose:hover { color: var(--dsw-alias-label-primary); }
