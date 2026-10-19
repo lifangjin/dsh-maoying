@@ -1,0 +1,7 @@
+# memories.yml —— 叙事记忆（顶层数组；只记已写进正文的事实，不记计划）
+# 字段：
+#   category       character|location|item|event|promise|appearance|other
+#                  （appearance = 出场记录：谁在哪章登过场；promise = 已说出口的承诺）
+#   content        事实一句话
+#   source_chapter 出处章节号
+[]

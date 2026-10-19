@@ -1,0 +1,8 @@
+# clue-board.yml —— 线索板（顶层数组；悬念/误导/推理/悬问的调度台）
+# 字段：
+#   kind             clue|red-herring|deduction|question
+#                    （clue 线索 / red-herring 误导 / deduction 推理 / question 悬问）
+#   content          线索一句话
+#   related_chapter  出现章节号
+#   resolved         true|false（误导揭示、悬问解答、推理兑现后置 true）
+[]

@@ -1,0 +1,9 @@
+# project.yml —— 书稿元信息（平键，无嵌套）。phase 是七阶段工作流的状态机指针，
+# 每完成一个里程碑由主编推进并简报用户。
+title: 未命名书稿        # 书名
+author: ""              # 作者笔名
+genre: ""               # 题材（如：东方玄幻 / 都市异能 / 历史架空）
+length: ""              # 预期篇幅（如：约100万字 / 300章）
+language: zh            # 正文语言
+phase: idea             # 七阶段：idea|setting|outline|writing|review|consistency|export
+description: ""         # 一句话简介（写封面文案时可直接引用）

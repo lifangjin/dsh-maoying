@@ -1,0 +1,9 @@
+# relations.yml —— 人物关系（顶层数组，每条关系一条；a/b 用角色卡 slug）
+# 字段：
+#   a / b        双方角色卡 slug（characters/ 目录名）
+#   type         关系类型（师徒/宿敌/恋人/同门……自定）
+#   description  一句话说明这段关系的张力所在
+#   intensity    关系强度 1-5
+#   started      关系开始的章节号（如 v01-c003）
+#   ended        结束章节号，未结束留空 ""
+[]

@@ -1,0 +1,6 @@
+# dsh-maoying bundle patch — `dsh plugin --profile <name> add dsh-maoying` 时由
+# reconcilePlugins 并入该 profile 的 dsh.profile.bundles，boot 时并入补丁树。
+# name: dsh-maoying 指向 pnpm 装进 profile 的本包（main: index.mjs）。
+- insert:
+    - id: maoying-installer
+      name: dsh-maoying

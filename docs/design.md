@@ -1,0 +1,170 @@
+# dsh-maoying（毛颖）设计文档
+
+网文创作辅助 DSH 插件。功能概念改写自 [niyongsheng/mythpen](https://github.com/niyongsheng/mythpen)（桌面 AI 小说工具，GPL-3.0）——**只借鉴功能概念与数据模型思路，不搬运任何代码与 prompt 文本**，本仓库全部代码重写，以 MIT 发布。
+
+命名：毛颖，典出韩愈《毛颖传》——毛笔拟人得名「毛颖」，与 dsh-paoding（庖丁）同一命名脉络。
+
+## 1. 核心洞察与架构
+
+mythpen 的本质：LLM → function calling（30+ 工具）→ Express API → SQLite。DSH 里的天然等价物更省：
+
+```
+mythpen:  LLM → 30个 function tools → Express API → SQLite
+maoying:  agent → glob/grep/read/edit/write → 工作区 novel/ 结构化文件
+```
+
+小说项目 = 一个结构化 markdown/YAML 目录。查「所有未回收伏笔」就是 grep foreshadows.yml，无需 API 层与数据库；人可直接改文件、git 可版本化。
+
+插件形态（一期，无 UI 面板）：
+
+```
+dsh-maoying/
+  package.json            # name: dsh-maoying, engines: dsh >=0.1.7 <0.3, type: module
+  cordis.patch.yml        # bundle insert → 挂载 index.mjs（启动时安装预设）
+  index.mjs               # cordis 插件：启动时 ensurePresetInstalled（幂等）
+  icon.svg
+  presets/maoying/        # 预设源（会被复制到 ~/.dsh/.agent-presets/maoying/）
+    preset.yml            #   name/description/order
+    agent.cordis.yml      #   完整组合：主编人设 + 5 角色委派 + 工具行
+    restrict.mjs          #   主编工具面白名单（system-prompt/assemble 瀑布）
+    delegation-labels.mjs #   委派标签带角色显示名（tools/pre-execute 瀑布）
+  bin/maoying.mjs         # CLI：init / stats / index
+  templates/novel/        # init 脚手架模板
+  docs/                   # design.md（本文）、spec.md（数据规范）
+```
+
+### 安装机制（照搬 paoding 已验证路径）
+
+1. `dsh plugin --profile web add dsh-maoying`：包经 pnpm 装进 profile，包内 cordis.patch.yml 声明 bundle insert（`- insert: [- id: maoying-installer, name: dsh-maoying]`），boot 时并入补丁树。
+2. index.mjs（cordis 插件 main）启动时执行 ensurePresetInstalled：
+   - 解析 dsh home（`DSH_HOME` 或 `~/.dsh`）；
+   - 把 `presets/maoying/` 四个文件复制到 `<home>/.agent-presets/maoying/`（内容或版本变化即覆盖，写入 `.installed-version` 标记）；
+   - 在 `<home>/cordis.patch.yml` 写托管块（`# --- dsh-maoying preset managed (auto-generated; do not edit) ---` 起止标记），内容为声明行：
+
+     ```yaml
+     - insert:
+         - id: preset-maoying
+           name: '@deepseek-ai/dsh-agent-preset'
+           config:
+             id: maoying
+             name: "毛颖创作"
+             description: <preset.yml description>
+             order: 6
+             plugins: <agent.cordis.yml 解析后的完整数组>
+     ```
+
+   - 全程幂等：标记块已存在且版本一致则跳过；不一致则整块替换。YAML 解析/序列化用 `yaml` npm 包（dependencies 声明）。
+   - 宿主版本 ≥0.2.1-rc.2 时 logger.warn 提示（内联 persona/toolFilter 委派行形态自 0.2.1-rc.2 起被 dsh-tool-subagent 拒绝；支持面见 §6）。
+3. 卸载 `dsh plugin remove dsh-maoying` 后：bundle 行消失，托管块与 .agent-presets/maoying/ 需手动删（README 写明两条 rm 命令；与 paoding 一致）。
+
+## 2. mythpen 功能映射（一期范围裁决）
+
+| mythpen 功能 | maoying 一期 | 载体 |
+|---|---|---|
+| 项目管理（类型/篇幅/语言） | novel/project.yml | 文件规范 |
+| 7 阶段工作流状态机 | 保留，写 project.yml phase | 主编人设 |
+| Writing 6 步写作法 | 保留改写 | 主编人设（委派映射：大纲→outline、正文→write、审稿→review） |
+| Collab 4 步共创 | 保留改写 | 主编人设 |
+| 五维叙事字段 | 保留（章节 frontmatter 五键） | 文件规范 |
+| 角色卡 + 出场记录 | characters/*.md；出场记录入 memories.yml（category: appearance） | 文件规范 |
+| 世界观 / 科学设定三色 | world/*.md、science/*.md（label: known/extrapolation/hypothesis） | 文件规范 |
+| 伏笔状态机 | foreshadows.yml（planted/progressing/resolved/abandoned + 预期回收章节 + 优先级） | 文件规范 |
+| 时间线 / 叙事记忆（promise）/ 线索板 | timeline.yml / memories.yml / clue-board.yml | 文件规范 |
+| 人物关系图可视化 | relations.yml 纯数据（一期无图） | 文件规范 |
+| 上下文注入（全量角色+章节+伏笔） | 改为按需读：主编先读 index.yml 概览，写到哪章读哪章的上下文（前章结尾+该章大纲+出场角色卡+活跃伏笔） | 主编人设纪律 |
+| AI 工具集 function calling | 天然消失（agent 直接用文件工具） | DSH 架构红利 |
+| 一致性检查（冲突/时间线/伏笔/设定） | review 角色（审校）：四维扫描 + 审稿清单 | 委派角色 |
+| 导出 EPUB/HTML/MD/TXT | **二期**（一期只留 CLI stats/index） | — |
+| Token 用量统计 | 无需（DSH 自带） | — |
+| Web 管理面板 | **三期**（照 paoding-config-ui 机制） | — |
+| （mythpen 没有）素材考据调研 | **research 角色**：web 检索历史/地理/专业素材，笔记落 novel/research/ | 委派角色（DSH 差异化优势） |
+
+## 3. novel/ 数据规范（决策定稿）
+
+```
+novel/
+  README.md            # 数据规范速查（init 时从模板生成；主编不确定格式时读它）
+  project.yml          # title/author/genre/length/language/phase/description
+  index.yml            # 派生概览（maoying index 重建；主编每次开工先读）
+  volumes.yml          # - {id: v01, title, summary, chapters: "001-020"}
+  chapters/
+    v01-c001.md        # frontmatter: volume/num/title/status/summary + 五维键；
+                       #   正文在 body。status: pending|writing|review|accepted
+  characters/
+    <slug>.md          # frontmatter: name/age/gender/role(protagonist|antagonist|supporting|minor)/
+                       #   appearance/personality/background/motivation/arc/markers[]；body 为备注
+  world/
+    <slug>.md          # frontmatter: category(地点|组织|概念|事件)/tags[]；body 为描述
+  science/
+    <slug>.md          # frontmatter: label(known|extrapolation|hypothesis)/references[]；body
+  relations.yml        # - {a, b, type, description, intensity: 1-5, started, ended}
+  foreshadows.yml      # - {id: fs-001, title, status, priority, planted_chapter,
+                       #    expected_resolve, resolved_chapter, notes}
+  timeline.yml         # - {year, title, description, importance: 1-5, chapter}
+  memories.yml         # - {category: character|location|item|event|promise|appearance|other,
+                       #    content, source_chapter}
+  clue-board.yml       # - {kind: clue|red-herring|deduction|question, content,
+                       #    related_chapter, resolved: bool}
+  research/            # research 角色考据笔记落这里（<topic>.md）
+  exports/             # 二期导出产物
+```
+
+要点：五维字段键名用英文（cognitive_frame / emotional_anchor / world_texture / suspense / interpersonal_tension，YAML 工具安全），值中文；模板文件内注释给中文说明。frontmatter 用 `---` 围栏。所有 yml 顶层是数组或平键，禁止深嵌套——grep 友好。
+
+## 4. 编排预设：主编 + 五帮手
+
+主 agent = 主编（创作总监），带方法论人设；重活委派：
+
+| toolName | 角色 | 干什么 | backgroundMode | 工具面（toolFilter.allow） |
+|---|---|---|---|---|
+| outline | 大纲师 | 卷章规划、章节大纲+五维字段 | continuable | read read_image glob grep write edit bash ask_user_question todo_write |
+| write | 写手 | 章节正文（按大纲写、衔接前章、回报设定变更） | continuable | read read_image glob grep write edit bash ask_user_question todo_write |
+| review | 审校 | 审稿清单 + 四维一致性扫描（只读、出报告不改稿） | one-shot | read read_image glob grep todo_write ask_user_question |
+| lore | 设定管理员 | 章节/角色/世界观/伏笔/时间线/记忆/线索板维护，出场记录与伏笔状态推进 | continuable | read glob grep write edit bash ask_user_question todo_write |
+| research | 素材调研员 | 联网考据（历史/地理/专业领域），笔记落 novel/research/ | one-shot | web_search web_fetch glob grep read write bash ask_user_question todo_write |
+
+主编工具面（restrict.mjs 白名单）：outline write review lore research + send_message list_agents interrupt_agent + glob grep read read_image bash + todo_write ask_user_question get_goal create_goal update_goal exit_plan_mode job_output job_list job_kill。registry deny: ['skill']（同 paoding，堵 ~1.3k 技能目录注入）。
+
+注意：toolFilter.allow 一律不放 mcp__* 工具（子代理创建时 tools.restrict 校验名字必须在注册面，MCP 是否挂载是 host 事实，硬编码会让未装 tavily 的宿主直接建不出子代理）。
+
+delegation-labels 静态角色名映射：{outline: 大纲师, write: 写手, review: 审校, lore: 设定管理员, research: 素材调研员}。
+
+## 5. 主编人设（核心 IP，中文）
+
+persona prefix 内容骨架（agent.cordis.yml 内联，中文书写）：
+
+1. **身份**：网文主编/创作总监，管 project 目录 novel/，重活委派五帮手，自己只做规划、衔接、验收、状态推进。
+2. **开工纪律**：先读 novel/project.yml + index.yml；不确定文件格式读 novel/README.md；不全量读章节，写到哪章读哪章上下文（前章结尾 ~1500 字 + 该章 frontmatter + 出场角色卡 + 活跃伏笔节选）。
+3. **七阶段状态机**（每阶段推进写 project.yml phase）：idea 选题 → setting 设定 → outline 大纲 → writing 写作 → review 审阅 → consistency 一致性 → export 导出。每完成一个里程碑必须推进 phase 并告知用户。
+4. **Writing 六步法**（逐章循环）：
+   ① 衔接检查：读前章结尾，确认无断裂；
+   ② 委派 outline 出/改本章大纲（含五维字段），主编过目；
+   ③ 委派 write 写正文（写手人设要求：按大纲覆盖五维、不写崩人设、章尾留钩子），status→writing；
+   ④ 委派 review 审稿（清单：语言/节奏/人设符合/不剧透/伏笔推进合理/前后矛盾），status→review；
+   ⑤ 审稿问题回 write 修（continuable 就地续修）或主编微调；
+   ⑥ 通过后 status→accepted，委派 lore 做定稿维护（出场记录、伏笔状态、记忆、线索板、时间线），`maoying index` 重建概览。
+   循环检查：还有非 accepted 章节 → 回 ①。
+5. **Collab 四步共创**（新书冷启动）：设定共创（世界观+核心角色卡）→ 分卷规划（volumes.yml + 各卷 summary）→ 前三章交付（黄金三章：第一章立世界观钩子、第二章立主角动机、第三章立核心冲突）→ 交接循环写作（切 Writing 六步法）。
+6. **简短确认即执行**：用户回「ok/可以/继续」直接推进下一步，不再复述确认。
+7. **设定变更上报**：写手回报的临场设定变更（新角色/新地点/伏笔异动）必须经 lore 落盘才算数；发现与既有设定冲突，先停笔报告主编。
+8. **失败处理**：委派失败按 DSH 委派 SOP（diagnose by stop reason，max-tokens 拆章，refusal 换路）。
+
+各帮手 persona 一段话（内联在各委派行），写明本行工具纪律与回报格式（如 review 固定输出四维表格 + 清单勾选）。
+
+## 6. 兼容面
+
+- 支持：DSH 0.1.7 – 0.2.1-rc.1（patch 声明行 + 内联委派行形状）。
+- 0.2.1-rc.2+：dsh-tool-subagent 拒内联 persona/toolFilter，须换代为 AgentPreset 形态——二期适配（照 paoding 0.2.1 生成路径）。
+- ≤0.1.6 目录扫描轨道：不做（已淘汰）。
+- 当前开发宿主：0.2.0-rc.2（内联形状 OK）。
+
+## 7. CLI（bin/maoying.mjs，零依赖 node:fs）
+
+- `maoying init [dir]`：从 templates/novel/ 脚手架生成 novel/（已存在文件跳过，绝不覆盖），README.md + 各 yml 带中文注释示例。
+- `maoying stats [dir]`：逐章与总字数（CJK 计数）、状态分布、phase 展示。
+- `maoying index [dir]`：从 chapters/ 重建 index.yml（卷/章/标题/状态/字数/一句话梗概）。
+- 主编人设里写明：定稿维护后跑 `bash bin 不可用`——CLI 经 npx 形态不可靠，改为主编用 node 直跑插件内 CLI？**否**——一期方案：index.yml 由 lore 角色直接重写（文件规范写明格式），CLI index 仅供人工兜底。stats/init 人工用。
+
+## 8. 二期路线
+
+技能包（黄金三章/爽点节奏/审校清单/伏笔管理规范）、导出（MD/TXT/EPUB）、0.2.1-rc.2+ AgentPreset 形态适配、Web 创作台面板（照 paoding-config-ui：/api/maoying/* + 左侧栏入口）。
