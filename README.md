@@ -59,6 +59,24 @@ dsh plugin --profile web add link:"$PWD/dsh-maoying"
 
 用户回「ok / 可以 / 继续」即视为确认，主编直接推进，不复述确认。
 
+## 方法论技能
+
+随插件带 4 个网文方法论技能，插件启动时安装器把它们落盘到 `~/.dsh/skills/`（即 `<home>/skills/`）下的 `maoying-*` 四个目录，宿主技能面板可直接看到；大纲师、写手、审校、设定管理员按场景自动加载，你不用手动操作：
+
+| 技能 | 一句话说明 |
+|---|---|
+| maoying-golden-opening | 黄金三章：前三章职能分工（世界钩子 → 动机确立 → 冲突引爆）、前 300 字出事原则、信息释放纪律与自检清单 |
+| maoying-beat-pacing | 爽点节奏：爽点类型库、压抑-释放配比、单章/中/大三级节奏曲线与章尾钩子选型 |
+| maoying-review-checklist | 审校清单：语言/节奏/人设/逻辑/伏笔/剧透六层逐项检查，按 P0/P1/P2 三档严重度输出 |
+| maoying-foreshadow-discipline | 伏笔管理：埋设即登记、推进节奏排期、回收「意外 + 合理」标准与台账清理阈值 |
+
+安装器只认 `maoying-*` 前缀目录，`~/.dsh/skills/` 下你自己的技能一个字节不动。卸载插件后技能目录需手动清理（四目录一起删）：
+
+```bash
+dsh plugin --profile web remove dsh-maoying
+rm -rf "${DSH_HOME:-$HOME/.dsh}/skills/"maoying-*
+```
+
 ## novel/ 数据规范
 
 `novel/` 目录是整个插件的数据库：project.yml（元信息与七阶段 phase）、volumes.yml、chapters/（frontmatter 五维叙事字段 + 正文）、characters/（角色卡）、world/、science/（三色设定）、relations.yml、foreshadows.yml（伏笔状态机）、timeline.yml、memories.yml（含出场记录与承诺账）、clue-board.yml、research/、exports/。全部格式、示例与设计理由见：
@@ -72,15 +90,28 @@ dsh plugin --profile web add link:"$PWD/dsh-maoying"
 maoying init [dir]     # 生成 novel/ 脚手架（默认 ./novel；已存在文件一律跳过，绝不覆盖）
 maoying stats [dir]    # 逐章 CJK 字数、状态分布、当前 phase
 maoying index [dir]    # 从 volumes.yml + chapters/ 重建 index.yml（派生文件）
+maoying export [dir]   # 导出全书：--format md|txt|epub（默认 md），--out <目录> 改输出位置
 ```
 
-零依赖（node:fs/path/url），任意 cwd 可用；npm 全局安装或 `pnpm link` 后可直接 `maoying` 调用，否则 `node <插件目录>/bin/maoying.mjs` 等价。日常写作中 index.yml 由设定管理员直接重建，CLI 主要给人用。
+export 示例：
+
+```bash
+maoying export novel                      # Markdown，落到 novel/exports/
+maoying export novel --format txt         # 纯文本
+maoying export novel --format epub        # EPUB 3（零依赖打包，可直接导入阅读器）
+maoying export novel --format epub --out ~/Downloads   # 换输出目录
+```
+
+输出目录默认 `<dir>/exports/`，文件名 `<书名>-<YYYYMMDD>.<扩展名>`（书名取 project.yml 的 title）；章节解析与 stats/index 同一套逻辑，frontmatter 不会混进正文。
+
+零依赖（node:fs/path/url/crypto），任意 cwd 可用；npm 全局安装或 `pnpm link` 后可直接 `maoying` 调用，否则 `node <插件目录>/bin/maoying.mjs` 等价。日常写作中 index.yml 由设定管理员直接重建，CLI 主要给人用。
 
 ## 卸载
 
 ```bash
 dsh plugin --profile web remove dsh-maoying
 rm -rf "${DSH_HOME:-$HOME/.dsh}/.agent-presets/maoying"
+rm -rf "${DSH_HOME:-$HOME/.dsh}/skills/"maoying-*
 ```
 
 宿主是 DSH 0.1.7+ 时再补一步：删去 `~/.dsh/cordis.patch.yml` 里的 dsh-maoying 托管块（`# --- dsh-maoying preset managed (auto-generated; do not edit) ---` 到 `# --- end dsh-maoying preset managed ---` 之间的整段，含两行标记），免得留下指向已删目录的声明行。`novel/` 目录是你的书稿，卸载插件不会动它。

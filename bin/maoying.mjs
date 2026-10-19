@@ -1,21 +1,25 @@
 #!/usr/bin/env node
 /**
- * maoying — 毛颖网文创作项目 CLI（init / stats / index）
+ * maoying — 毛颖网文创作项目 CLI（init / stats / index / export）
  *
- * 零依赖：只用 node:fs / node:path / node:url，模板目录经 import.meta.url 定位，
- * 任意 cwd 可用。novel/ 目录的数据规范见 templates/novel/README.md（或已初始化
- * 项目里的 novel/README.md）。
+ * 零依赖：只用 node:fs / node:path / node:url / node:crypto，模板目录经
+ * import.meta.url 定位，任意 cwd 可用。novel/ 目录的数据规范见
+ * templates/novel/README.md（或已初始化项目里的 novel/README.md）。
  *
  *   maoying init [dir]    生成 novel/ 脚手架（默认 ./novel；已存在文件跳过，绝不覆盖）
  *   maoying stats [dir]   逐章字数（CJK 计数）、状态分布、当前 phase
  *   maoying index [dir]   从 volumes.yml + chapters/ 重建 index.yml（派生文件）
+ *   maoying export [dir]  导出全书：--format md|txt|epub（默认 md）、--out <目录>
  *
  * 子命令出错 exit 1，中文报错。
  */
 
 import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { randomUUID } from 'node:crypto'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+
+import { buildEpub } from '../lib/epub.mjs'
 
 const PLUGIN_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const TEMPLATE_DIR = path.join(PLUGIN_ROOT, 'templates', 'novel')
@@ -219,6 +223,7 @@ function collectChapters(root) {
       status,
       summary: typeof meta.summary === 'string' ? meta.summary : '',
       words: countCjk(body),
+      body, // 原文正文（frontmatter 已剥离）；stats/index 不读，export 用
     })
   }
   chapters.sort((a, b) => {
@@ -374,6 +379,188 @@ function cmdIndex(targetArg) {
   console.log(`已重建 ${indexPath}：${volumes.length} 卷、${chapters.length} 章（总字数 ${totalWords}）、未归卷 ${orphans.length} 章。`)
 }
 
+// ── export ──────────────────────────────────────────────────────────────────
+
+/** 支持的导出格式（--format 取值）。 */
+const EXPORT_FORMATS = ['md', 'txt', 'epub']
+
+/**
+ * 导出文件名里的书名清洗：路径非法字符 /\\:*?"<>| 一律替换掉，再去首尾
+ * 空白与点（Windows 上尾点会吞扩展名）。清完为空兜回「未命名书稿」。
+ */
+function sanitizeTitleForFile(title) {
+  const cleaned = String(title ?? '')
+    .replace(/[/\\:*?"<>|]/g, '')
+    .replace(/^[.\s]+|[.\s]+$/g, '')
+  return cleaned !== '' ? cleaned : '未命名书稿'
+}
+
+/** 卷标题映射：volumes.yml 的 id → title；文件缺失/不合规返回空映射。 */
+function volumeTitleMap(root) {
+  const raw = parseSimpleYaml(readTextOrNull(path.join(root, 'volumes.yml')))
+  const list = Array.isArray(raw) ? raw.filter((v) => v !== null && typeof v === 'object' && !Array.isArray(v)) : []
+  const map = new Map()
+  for (const v of list) {
+    const id = String(v.id ?? '')
+    if (id !== '' && typeof v.title === 'string' && v.title !== '') map.set(id, v.title)
+  }
+  return map
+}
+
+/** 卷号还原：'v01' → 1；不合规范的卷 id 返回 null（该卷跳过卷层）。 */
+function volumeNumber(volume) {
+  const m = /^v(\d+)$/.exec(String(volume ?? ''))
+  return m === null ? null : Number(m[1])
+}
+
+/**
+ * 正文分段：空行为段界；段内多行去首尾空白后直接拼接（中文行间不加空格）。
+ * md/txt 的正文与 epub 的 <p> 共用这一套。
+ */
+function bodyParagraphs(body) {
+  const paragraphs = []
+  let current = []
+  for (const rawLine of String(body ?? '').split(/\r?\n/)) {
+    const line = rawLine.trim()
+    if (line === '') {
+      if (current.length > 0) paragraphs.push(current.join(''))
+      current = []
+    } else {
+      current.push(line)
+    }
+  }
+  if (current.length > 0) paragraphs.push(current.join(''))
+  return paragraphs
+}
+
+/**
+ * 章节展示信息（md/txt/epub 三格式共用）：卷层、章标题、分段正文。
+ * 章标题形如「卷X-章Y 章节标题」；卷 id 不合规范或章节无卷信息时退为
+ * 「章Y 章节标题」，卷层记 null（导出时跳过卷层）。章号缺省用全书序号。
+ */
+function chapterDisplay(ch, ordinal, volTitles) {
+  const volNum = volumeNumber(ch.volume)
+  const chNum = Number.isInteger(ch.num) ? ch.num : ordinal
+  const volPart = volNum !== null ? `卷${volNum}-章${chNum}` : `章${chNum}`
+  return {
+    volume: volNum !== null ? { num: volNum, title: volTitles.get(ch.volume) ?? '' } : null,
+    heading: `${volPart} ${ch.title}`.trim(),
+    body: ch.body,
+    paragraphs: bodyParagraphs(ch.body),
+  }
+}
+
+/** 按相邻同卷分组（保持章序）：[{ volume, chapters: [display] }]，无卷组 volume 为 null。 */
+function groupByVolume(chapters, volTitles) {
+  const groups = []
+  let current = null
+  chapters.forEach((ch, i) => {
+    const display = chapterDisplay(ch, i + 1, volTitles)
+    const rawVolume = ch.volume ?? ''
+    if (current === null || current.rawVolume !== rawVolume) {
+      current = { rawVolume, volume: display.volume, chapters: [] }
+      groups.push(current)
+    }
+    current.chapters.push(display)
+  })
+  return groups
+}
+
+/** 卷层标题：`卷1 卷名`；无卷名只留 `卷1`。 */
+function volumeHeading(volume) {
+  return volume.title !== '' ? `卷${volume.num} ${volume.title}` : `卷${volume.num}`
+}
+
+/** md：`# 书名` + 卷层 `## 卷N 卷名` + 每章 `### 卷X-章Y 标题` + 正文原文。 */
+function renderMarkdown(title, groups) {
+  const lines = [`# ${title}`, '']
+  for (const group of groups) {
+    if (group.volume !== null) lines.push(`## ${volumeHeading(group.volume)}`, '')
+    for (const display of group.chapters) {
+      lines.push(`### ${display.heading}`, '', display.body.trim(), '')
+    }
+  }
+  return `${lines.join('\n').replace(/\n+$/, '')}\n`
+}
+
+/** txt：纯文本；书名/卷名/章标题独立成行（章标题前空一行），段间空行。 */
+function renderText(title, groups) {
+  const lines = [title]
+  for (const group of groups) {
+    if (group.volume !== null) lines.push('', volumeHeading(group.volume))
+    for (const display of group.chapters) {
+      lines.push('', display.heading, '', display.paragraphs.join('\n\n'))
+    }
+  }
+  return `${lines.join('\n').replace(/\n+$/, '')}\n`
+}
+
+function cmdExport(args) {
+  let dirArg = null
+  let format = 'md'
+  let outArg = null
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i]
+    if (arg === '--format' || arg === '--out') {
+      const value = args[++i]
+      if (value === undefined) fail(`选项 ${arg} 缺参数——--format 取 md|txt|epub，--out 取输出目录`)
+      if (arg === '--format') format = value
+      else outArg = value
+    } else if (arg.startsWith('--format=')) {
+      format = arg.slice('--format='.length)
+    } else if (arg.startsWith('--out=')) {
+      outArg = arg.slice('--out='.length)
+    } else if (arg.startsWith('-')) {
+      fail(`未知选项「${arg}」——export 只认 --format md|txt|epub 与 --out <目录>`)
+    } else if (dirArg === null) {
+      dirArg = arg
+    } else {
+      fail(`多余的位置参数「${arg}」——export 只接受一个项目目录`)
+    }
+  }
+  if (!EXPORT_FORMATS.includes(format)) fail(`未知导出格式「${format}」——支持 ${EXPORT_FORMATS.join(' / ')}`)
+
+  const root = path.resolve(dirArg ?? 'novel')
+  const chapters = collectChapters(root)
+  if (chapters === null) fail(`找不到 ${path.join(root, 'chapters')}——先跑 maoying init ${root}`)
+  if (chapters.length === 0) fail('没有可导出的章节')
+
+  const project = parseSimpleYaml(readTextOrNull(path.join(root, 'project.yml')))
+  const rawTitle =
+    project !== null && typeof project.title === 'string' && project.title.trim() !== '' ? project.title.trim() : ''
+  const title = rawTitle !== '' ? rawTitle : '未命名书稿'
+  const author =
+    project !== null && typeof project.author === 'string' && project.author.trim() !== ''
+      ? project.author.trim()
+      : '佚名'
+
+  const groups = groupByVolume(chapters, volumeTitleMap(root))
+  const now = new Date()
+  const stamp = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}`
+  const outDir = path.resolve(outArg ?? path.join(root, 'exports'))
+  const outPath = path.join(outDir, `${sanitizeTitleForFile(rawTitle)}-${stamp}.${format}`)
+
+  let content
+  if (format === 'md') {
+    content = renderMarkdown(title, groups)
+  } else if (format === 'txt') {
+    content = renderText(title, groups)
+  } else {
+    content = buildEpub({
+      title,
+      author,
+      uuid: randomUUID(),
+      chapters: groups.flatMap((group) => group.chapters),
+    })
+  }
+
+  mkdirSync(outDir, { recursive: true })
+  writeFileSync(outPath, content)
+  const totalWords = chapters.reduce((sum, ch) => sum + ch.words, 0)
+  console.log(`导出完成：${path.resolve(outPath)}`)
+  console.log(`格式 ${format}；${chapters.length} 章，总字数 ${totalWords}（CJK 计数）。`)
+}
+
 // ── 入口 ────────────────────────────────────────────────────────────────────
 
 const HELP_TEXT = `毛颖（maoying）—— 网文创作项目 CLI
@@ -382,9 +569,11 @@ const HELP_TEXT = `毛颖（maoying）—— 网文创作项目 CLI
   maoying init [dir]     生成 novel/ 脚手架（默认 ./novel；已存在的文件一律跳过，绝不覆盖）
   maoying stats [dir]    逐章字数（CJK 计数）、状态分布、当前阶段
   maoying index [dir]    从 volumes.yml + chapters/ 重建 index.yml（派生文件）
+  maoying export [dir]   导出全书：--format md|txt|epub（默认 md），--out <目录> 改输出位置
 
 说明：
   novel/ 目录的数据规范见 templates/novel/README.md（或项目内 novel/README.md）。
+  export 输出目录默认 <dir>/exports/，文件名 <书名>-<YYYYMMDD>.<扩展名>。
   所有命令零依赖，任意 cwd 可用；出错时退出码 1。`
 
 function main(argv) {
@@ -396,11 +585,12 @@ function main(argv) {
   if (command === 'init') return cmdInit(rest[0])
   if (command === 'stats') return cmdStats(rest[0])
   if (command === 'index') return cmdIndex(rest[0])
+  if (command === 'export') return cmdExport(rest)
   if (command === undefined) {
-    console.error('maoying: 缺少子命令（init / stats / index，--help 看用法）')
+    console.error('maoying: 缺少子命令（init / stats / index / export，--help 看用法）')
     process.exit(1)
   }
-  fail(`未知子命令「${command}」——可用：init / stats / index（--help 看用法）`)
+  fail(`未知子命令「${command}」——可用：init / stats / index / export（--help 看用法）`)
 }
 
 main(process.argv.slice(2))

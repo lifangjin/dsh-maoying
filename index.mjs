@@ -12,7 +12,10 @@
  *      restrict.mjs / delegation-labels.mjs）复制到 <home>/.agent-presets/maoying/
  *      ——逐字节比较，内容一致不写（避免无谓的 mtime 抖动）；复制完落
  *      .installed-version 标记（本包版本号，从 package.json 读）；
- *   3) 在 <home>/cordis.patch.yml 维护托管块（起止标记见 MANAGED_BEGIN /
+ *   3) 把包内 skills/ 的 maoying-* 技能目录复制到 <home>/skills/<name>/
+ *      ——同样逐字节比较、一致不写，每个技能目录落 .installed-version 标记；
+ *      只碰 maoying-* 前缀目录，用户自己的技能一个字节都不动；
+ *   4) 在 <home>/cordis.patch.yml 维护托管块（起止标记见 MANAGED_BEGIN /
  *      MANAGED_END），块内是一条 dsh-agent-preset 声明行——preset.yml 的
  *      name/description/order 与 agent.cordis.yml 解析出的完整 plugins 数组
  *      全部内联。DSH 0.1.7 起宿主靠这条声明行发现预设；不写它，预设选择器里
@@ -40,7 +43,7 @@
  * 失败面：全程 try/catch，任何失败只 warn 不抛——安装器绝不能弄死宿主启动。
  */
 
-import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import os from 'node:os'
 import path from 'node:path'
@@ -308,15 +311,98 @@ export function upsertManagedBlock(dshHome, blockText, { versionMarkerCurrent })
   return span !== null ? 'updated' : 'created'
 }
 
+// ── 方法论技能落盘 ──────────────────────────────────────────────────────────
+
+/** 技能源目录（包内 skills/）。 */
+const SKILLS_SOURCE_DIR = path.join(PLUGIN_ROOT, 'skills')
+
+/** 只搬 maoying-* 前缀的技能目录——<home>/skills 里用户自己的技能绝不触碰。 */
+const SKILL_DIR_PREFIX = 'maoying-'
+
+/**
+ * 递归收集目录下全部文件的相对路径（POSIX 分隔）。目录打不开/不存在返回
+ * []，由调用方兜底。
+ */
+function listSkillFiles(dir, relBase = '') {
+  const files = []
+  let entries
+  try {
+    entries = readdirSync(dir, { withFileTypes: true })
+  } catch {
+    return files
+  }
+  for (const entry of entries.sort((a, b) => a.name.localeCompare(b.name))) {
+    const rel = relBase === '' ? entry.name : `${relBase}/${entry.name}`
+    if (entry.isDirectory()) files.push(...listSkillFiles(path.join(dir, entry.name), rel))
+    else if (entry.isFile()) files.push(rel)
+  }
+  return files
+}
+
+/**
+ * 把包内 skills/ 的 maoying-* 技能目录复制到 <home>/skills/<name>/：
+ *   - 文件逐字节比较（Buffer.equals），内容一致不写（保住 mtime，二跑零写盘）；
+ *   - 每个技能目录落 .installed-version 标记（语义同预设标记：一致不重写）；
+ *   - <home>/skills 不存在则递归创建；非 maoying-* 前缀的目录一概不看。
+ * 返回本次有复制动作的技能目录名列表。单个技能失败只 warn 不拖累其余。
+ */
+export function installSkills(dshHome, { version, logger = console } = {}) {
+  const copied = []
+  let entries
+  try {
+    entries = readdirSync(SKILLS_SOURCE_DIR, { withFileTypes: true })
+  } catch (err) {
+    logger.warn?.(`maoying-installer: 读取包内技能目录 ${SKILLS_SOURCE_DIR} 失败（已跳过技能落盘）: ${err?.message ?? err}`)
+    return copied
+  }
+  const skillsHome = path.join(dshHome, 'skills')
+  for (const entry of entries.sort((a, b) => a.name.localeCompare(b.name))) {
+    if (!entry.isDirectory() || !entry.name.startsWith(SKILL_DIR_PREFIX)) continue
+    const srcDir = path.join(SKILLS_SOURCE_DIR, entry.name)
+    const dstDir = path.join(skillsHome, entry.name)
+    let touched = false
+    try {
+      for (const rel of listSkillFiles(srcDir)) {
+        const src = path.join(srcDir, rel)
+        const dst = path.join(dstDir, rel)
+        let same = false
+        try {
+          same = existsSync(dst) && readFileSync(dst).equals(readFileSync(src))
+        } catch {
+          same = false
+        }
+        if (!same) {
+          mkdirSync(path.dirname(dst), { recursive: true })
+          copyFileSync(src, dst)
+          touched = true
+        }
+      }
+      const markerPath = path.join(dstDir, '.installed-version')
+      try {
+        const current = existsSync(markerPath) && readFileSync(markerPath, 'utf8').trim() === version
+        if (!current) writeFileSync(markerPath, `${version}\n`, 'utf8')
+      } catch (err) {
+        logger.warn?.(`maoying-installer: 技能 ${entry.name} 的 .installed-version 标记写入失败（不影响技能本体）: ${err?.message ?? err}`)
+      }
+    } catch (err) {
+      logger.warn?.(`maoying-installer: 技能 ${entry.name} 落盘失败（已跳过，不影响其他技能与预设）: ${err?.message ?? err}`)
+    }
+    if (touched) copied.push(entry.name)
+  }
+  return copied
+}
+
 // ── 安装主流程 ──────────────────────────────────────────────────────────────
 
 /**
  * 幂等安装毛颖预设。步骤彼此独立、各自可失败：
  *   1) 预设文件落盘（不依赖 yaml，任何情况都先做）；
  *   2) .installed-version 标记（内容与当前版本一致即不重写）；
- *   3) home patch 托管块（依赖 yaml；yaml 缺席时跳过并 warn，下次启动自愈）。
- * 返回 { status, home, presetDir, copied, blockAction, reason }，status 取
- * 'ok'（全链路完成）| 'partial'（托管块未写，原因见 reason）。
+ *   3) 方法论技能落盘到 <home>/skills/maoying-*（不依赖 yaml，独立可失败）；
+ *   4) home patch 托管块（依赖 yaml；yaml 缺席时跳过并 warn，下次启动自愈）。
+ * 返回 { status, home, presetDir, copied, skillsCopied, blockAction, reason }，
+ * status 取 'ok'（全链路完成）| 'partial'（托管块未写，原因见 reason）；
+ * skillsCopied 为本次有复制动作的技能目录名列表。
  */
 export function ensurePresetInstalled(ctx = {}) {
   const logger = ctx?.logger ?? console
@@ -353,14 +439,22 @@ export function ensurePresetInstalled(ctx = {}) {
     logger.warn?.(`maoying-installer: .installed-version 标记写入失败（不影响预设本体）: ${err?.message ?? err}`)
   }
 
-  // 3) home patch 托管块
+  // 3) 方法论技能落盘（与 yaml 无关；装不上不拖累预设，下次启动自愈）
+  let skillsCopied = []
+  try {
+    skillsCopied = installSkills(home, { version, logger })
+  } catch (err) {
+    logger.warn?.(`maoying-installer: 技能落盘失败（已跳过，不影响预设本体）: ${err?.message ?? err}`)
+  }
+
+  // 4) home patch 托管块
   const yaml = loadYamlLib(home)
   if (!yaml) {
     logger.warn?.(
       'maoying-installer: <home>/node_modules 下找不到 yaml 包，无法解析预设组合——' +
         '预设文件已复制，但 cordis.patch.yml 声明行本次跳过，下次宿主启动自动补写',
     )
-    return { status: 'partial', home, presetDir, copied, blockAction: null, reason: 'yaml-unavailable' }
+    return { status: 'partial', home, presetDir, copied, skillsCopied, blockAction: null, reason: 'yaml-unavailable' }
   }
 
   const meta = parsePresetMeta(yaml, readFileSync(path.join(sourceDir, 'preset.yml'), 'utf8'))
@@ -371,6 +465,9 @@ export function ensurePresetInstalled(ctx = {}) {
   if (copied.length > 0) {
     logger.info?.(`maoying-installer: 预设文件已更新 ${PRESET_ID}: ${copied.join(', ')}`)
   }
+  if (skillsCopied.length > 0) {
+    logger.info?.(`maoying-installer: 方法论技能已落盘 <home>/skills: ${skillsCopied.join(', ')}`)
+  }
   if (blockAction === 'skipped') {
     logger.info?.(`maoying-installer: 预设 ${PRESET_ID} 已就绪（v${version}，声明行与文件均无变化）`)
   } else if (blockAction === 'updated') {
@@ -378,7 +475,7 @@ export function ensurePresetInstalled(ctx = {}) {
   } else if (blockAction === 'created') {
     logger.info?.(`maoying-installer: cordis.patch.yml 托管块已写入（v${version}）`)
   }
-  return { status: 'ok', home, presetDir, copied, blockAction, reason: null }
+  return { status: 'ok', home, presetDir, copied, skillsCopied, blockAction, reason: null }
 }
 
 /**

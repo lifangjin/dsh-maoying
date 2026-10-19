@@ -167,4 +167,7 @@ persona prefix 内容骨架（agent.cordis.yml 内联，中文书写）：
 
 ## 8. 二期路线
 
-技能包（黄金三章/爽点节奏/审校清单/伏笔管理规范）、导出（MD/TXT/EPUB）、0.2.1-rc.2+ AgentPreset 形态适配、Web 创作台面板（照 paoding-config-ui：/api/maoying/* + 左侧栏入口）。
+- ✅ **技能包（黄金三章/爽点节奏/审校清单/伏笔管理）**——已做：skills/ 四目录随包分发，安装器复制到 `<home>/skills/maoying-*`（逐字节比较幂等 + .installed-version 标记，见 index.mjs installSkills）。
+- ✅ **导出（MD/TXT/EPUB）**——已做：`maoying export [dir] --format md|txt|epub [--out <目录>]`；EPUB 由 lib/epub.mjs 零依赖打包（手写 stored zip + CRC32 表格法，EPUB 3 最小合法结构）。
+- ⬜ 0.2.1-rc.2+ AgentPreset 形态适配（未做）。
+- ⬜ Web 创作台面板（照 paoding-config-ui：/api/maoying/* + 左侧栏入口）（未做）。
