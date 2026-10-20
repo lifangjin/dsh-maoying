@@ -573,7 +573,7 @@ html[data-dsh-maoying-active]:not([data-dsh-mnemon-active]):not([data-dsh-taskbo
 .myt-fsCard { display: flex; flex-direction: column; gap: 6px; padding: 10px; border: 1px solid var(--dsw-alias-border-l2); border-radius: 12px; background: var(--dsw-alias-bg-layer-3); }
 .myt-fsTitle { display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; color: var(--dsw-alias-label-primary); overflow-wrap: anywhere; }
 .myt-fsMeta { display: flex; flex-wrap: wrap; gap: 6px; font-size: 11px; color: var(--dsw-alias-label-tertiary); font-variant-numeric: tabular-nums; }
-.myt-fsNotes { font-size: 11px; line-height: 16px; color: var(--dsw-alias-label-tertiary); overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.myt-fsNotes { font-size: 11px; line-height: 16px; color: var(--dsw-alias-label-tertiary); overflow-wrap: anywhere; }
 .myt-fsActions { display: flex; flex-wrap: wrap; gap: 6px; }
 .myt-fsActions .myt-btn { padding: 2px 8px; font-size: 11px; line-height: 16px; }
 
