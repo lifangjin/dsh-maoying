@@ -1,8 +1,7 @@
 /**
  * 毛颖主编工具面白名单（restrict.mjs）
  *
- * dsh-maoying 毛颖创作 preset 组件。机制与实现改写自 dsh-paoding 的
- * orchestrator restrict.mjs（MIT，同作者仓库）：挂 system-prompt/assemble
+ * dsh-maoying 毛颖创作 preset 组件。挂 system-prompt/assemble
  * 瀑布，把主编（主 agent）的模型可见工具面收窄为「角色委派 + 内部检索 +
  * 协调」白名单。委派子代理不在此过滤——各角色的工具面由委派行的 toolFilter
  * 在子代理创建时以 per-child tools.restrict() 收窄，这里再过滤会与之相交、
@@ -19,7 +18,7 @@
  * 见下方差异说明）、skill 目录（registry deny 堵 ~1.3k 注入）、以及未列出的
  * 一切通用委派与工作流工具。
  *
- * 与 paoding 的差异：主编白名单保留 write/edit——主编需要亲自做小修小补
+ * 说明：主编白名单保留 write/edit——主编需要亲自做小修小补
  * （改 phase、补 frontmatter、微调摘要），这些活不值得委派一次。
  *
  * Host 工具（mcp__*、插件工具）一律不硬编码——是否挂载是检测期事实，

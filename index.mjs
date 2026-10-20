@@ -1,7 +1,7 @@
 /**
  * dsh-maoying — cordis 插件（启动安装器）
  *
- * 机制（照搬 dsh-paoding 已验证路径，MIT，同作者）：
+ * 机制：
  * `dsh plugin --profile <name> add dsh-maoying` 时，包内 cordis.patch.yml 的
  * bundle insert（id: maoying-installer / name: dsh-maoying）由宿主
  * reconcilePlugins 并入该 profile 的 dsh.profile.bundles；boot 时 cordis 挂载
@@ -47,9 +47,8 @@
  * 三期追加（创作台面板，Node 侧）：本文件同时是 /api/maoying/* 前缀路由的
  *   注册点（inject webServer + workspaceRegistry，见 registerCreatorRoutes）。
  *   路由段与安装段彼此独立、各失败各的：路由注册/请求处理失败只 warn，
- *   安装器语义分毫不动。机制照搬 dsh-paoding 的 paoding-config-ui（MIT，
- *   同作者）：信任围栏、duplicate prefix route 短重试、限额 JSON 读体、
- *   client.css 现读下发，姿势一致、注释原创。
+ *   安装器语义分毫不动。要点：信任围栏、duplicate prefix route 短重试、
+ *   限额 JSON 读体、client.css 现读下发。
  */
 
 import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
@@ -332,7 +331,7 @@ export function stringifyManagedBlock(yaml, rows) {
 /**
  * 在行数组里定位托管块 [begin, end]（闭区间下标）。无起始标记返回 null；
  * 有起始无结束（托管块损坏，多半是手工删了半截）throw——拒绝写盘，绝不覆盖
- * 手工内容，与 paoding 同一口径。
+ * 手工内容。
  */
 export function findManagedSpan(lines) {
   const begin = lines.findIndex((l) => l.trim() === MANAGED_BEGIN)
@@ -463,8 +462,7 @@ export function installSkills(dshHome, { version, logger = console } = {}) {
 
 // ── 创作台面板：/api/maoying/* 路由（三期）─────────────────────────────────
 //
-// 机制照搬 dsh-paoding 的 paoding-config-ui（MIT，同作者），姿势一致、注释
-// 原创不做逐字搬运。要点：
+// 要点：
 //   · 宿主路由自带信任围栏只挂在 /api 网关上；/api/maoying 前缀更长，
 //     webserver 最长前缀优先会命中本插件而绕过网关围栏，故在此复刻同一
 //     围栏语义（Host 回环或 webRuntime.trustedHosts + 拒 cross-site +

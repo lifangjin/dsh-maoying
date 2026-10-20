@@ -1,6 +1,6 @@
 # 毛颖创作台（Web 面板）设计 · v1
 
-三期交付：DSH Web 左侧栏「毛颖创作台」入口 + 会话中栏全页面板 + `/api/maoying/*` 路由。机制照搬 dsh-paoding 的 paoding-config-ui（MIT，同作者），全部代码原创。
+三期交付：DSH Web 左侧栏「毛颖创作台」入口 + 会话中栏全页面板 + `/api/maoying/*` 路由。机制与实现全部原创。
 
 ## 0. 定位与边界
 
@@ -11,24 +11,24 @@
 - `package.json`：
   - `main` 不变（index.mjs，Node 侧 = 安装器 + 创作台路由）；
   - 新增 `exports["./client"]`: `"./lib/client.js"`；
-  - 新增 `dsh.client`: `{ platform: "web", inject: ["@deepseek-ai/dsh-client-ui-settings", "@deepseek-ai/dsh-client-connection"] }`（照 paoding 主包形态）；
+  - 新增 `dsh.client`: `{ platform: "web", inject: ["@deepseek-ai/dsh-client-ui-settings", "@deepseek-ai/dsh-client-connection"] }`；
   - `files` 补 `lib/`（已含）。
 - cordis.patch.yml 不变（bundle insert 已挂主包）。
-- 浏览器 bundle：`window.__ModuleLoader__.load({ id, factory })`，**id 从 currentScript.src 动态解析**（`/\/plugins\/([^/]+)\/client\.js/` 首段），解析不到回退 `'dsh-maoying'`——宿主合并 bundle 下 currentScript 是唯一可靠线索（paoding 0.3.3 教训）。
+- 浏览器 bundle：`window.__ModuleLoader__.load({ id, factory })`，**id 从 currentScript.src 动态解析**（`/\/plugins\/([^/]+)\/client\.js/` 首段），解析不到回退 `'dsh-maoying'`——宿主合并 bundle 下 currentScript 是唯一可靠线索（踩坑教训：宿主合并 bundle 下 id 不可写死）。
 - factory 内 `require('react')` + `require('@deepseek-ai/dsh-client-ui-primitives')`；图标做跨版本兜底可简化：只用 Regular 系（0.1.7+ 命名），旧宿主（≤0.1.6）不承诺。
 - CSS：`lib/base.css` 独立文件，Node 侧 `GET /api/maoying/client.css` 现读下发（no-cache），客户端首次物化幂等注入 `<link data-plugin-css="maoying-creator/base">`——改样式无需重启，GUI 刷新即生效。设计令牌用 `--dsw-alias-*`，深色主题随 `body[data-ds-dark-theme]` 自动跟随。
 
 ## 2. Node 侧：/api/maoying/* 路由
 
-注册形态（照 paoding）：
+注册形态：
 
 ```js
 export const inject = ['webServer', 'workspaceRegistry']   // webRuntime 经 ctx.get 读，不进 inject
 webServer.register({ kind: 'prefix', path: '/api/maoying', handler: async (req, res) => {...} })
 ```
 
-- **信任围栏**：逐字复刻 paoding index.mjs 的 isTrustedApiRequest（Host 回环或 webRuntime.trustedHosts + 拒 cross-site + origin 同源校验），403 走 `{ error: 'forbidden' }`。读取 trustedHosts 每请求实时 `ctx.get('webRuntime')?.trustedHosts ?? []`，自捕不抛。
-- duplicate prefix route 短重试（8 次 × 30ms，照 paoding registerPrefixRouteWithRetry）。
+- **信任围栏**：isTrustedApiRequest 信任围栏（Host 回环或 webRuntime.trustedHosts + 拒 cross-site + origin 同源校验），403 走 `{ error: 'forbidden' }`。读取 trustedHosts 每请求实时 `ctx.get('webRuntime')?.trustedHosts ?? []`，自捕不抛。
+- duplicate prefix route 短重试（8 次 × 30ms）。
 - 所有响应 JSON；错误形状统一 `{ ok: false, error }`（读路由可省 ok，直接 `{ error }` + 状态码）。
 - **路径安全**：凡是带 `path` 参数的请求，必须 resolve 后与 workspaceRegistry 列出的某个 workspace root **严格相等**（不做子路径、不做 ~ 展开）；novel 目录恒为 `<root>/novel`，file 参数 basename 化 + 规范化后必须落在 novel 根内（防穿越）。不满足一律 403。
 - 全程 try/catch，路由崩溃不弄死宿主；注册失败只 warn（安装器语义不变）。
@@ -83,7 +83,7 @@ webServer.register({ kind: 'prefix', path: '/api/maoying', handler: async (req, 
 
 ## 4. 浏览器侧：面板结构
 
-挂载（照 paoding 80-mount/86-overlay 模式）：
+挂载：
 - 左侧栏底部动作位入口「毛颖创作台」（sidebar.footer.action 键控槽，ctx.effect 注入 + MutationObserver 自愈）；
 - 会话中栏全页 overlay：`html[data-dsh-maoying-active]` 驱动，`dsh-panel-activate` 事件与 mnemon/taskboard/ssh 等全页面板互斥，点侧栏会话行自动关闭；
 - 顶部工作区选择器（workspaces 路由取数，hasNovel 的排前；无 novel 工作区显示引导卡：一句 `maoying init` 提示 + 复制按钮）。

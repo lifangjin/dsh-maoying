@@ -51,7 +51,7 @@
 /* ── 全页 overlay（data-dsh-maoying-view / html[data-dsh-maoying-active]）──
    机制照 dsh-mnemon：会话中栏转 relative，overlay 绝对铺满；打开态靠 <html>
    active 属性切换显隐并藏掉中栏其余子元素。与 mnemon / taskboard / ssh /
-   paoding 四家全页面板互斥（:not() 链，点亮谁谁显示）。 */
+   其余全页面板互斥（:not() 链，点亮谁谁显示）。 */
 [data-pane="conversation"],
 [class*="centerCol"],
 .dshDesktopConversationSurface {

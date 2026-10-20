@@ -1,6 +1,6 @@
 # maoying (毛颖创作) agent composition
 #
-# 组合形态对齐 dsh-paoding orchestrator（MIT，同作者）：自包含全量组合——基础
+# 组合形态：自包含全量组合——基础
 # 工具行全部注册在本 preset 层（不依赖 builtin standard），叠加创作编排层：
 #   · persona              → 主编人设（七阶段工作流 + 六步写作法 + 四步共创 +
 #                            上下文纪律 + 设定维护纪律，中文书写）
@@ -164,7 +164,7 @@
           When ready, call exit_plan_mode with the complete plan markdown, starting with a # title. Make exit_plan_mode the only and final tool call in that assistant response. If review rejects it, incorporate the feedback and present again. If the review channel is unavailable or aborted, stay in plan mode and ask the user to switch modes manually; do not proceed with implementation.
 
 # ── compaction ──────────────────────────────────────────────────────────────
-# 阈值照搬 paoding 实测校准值：0.45（256K 窗口 ≈ 118K 触发），摘要预算钉 8192。
+# 阈值实测校准值：0.45（256K 窗口 ≈ 118K 触发），摘要预算钉 8192。
 
 - id: compaction
   name: cordis:group

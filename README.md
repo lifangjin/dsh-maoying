@@ -144,5 +144,4 @@ rm -rf "${DSH_HOME:-$HOME/.dsh}/skills/"maoying-*
 
 ## 致谢
 
-- 编排机制（bundle patch 挂载、预设启动安装器、托管块手术、工具面收窄）参考同作者 [lifangjin/dsh-paoding](https://github.com/lifangjin/dsh-paoding)（MIT）的已验证路径。
-- 「毛颖」得名于韩愈《毛颖传》，与庖丁（dsh-paoding，典出《庄子》）同一命名脉络。
+- 「毛颖」得名于韩愈《毛颖传》：毛笔拟人，有封地有爵位。

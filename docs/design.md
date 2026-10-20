@@ -2,7 +2,7 @@
 
 网文创作辅助 DSH 插件。全部实现原创，以 MIT 发布。
 
-命名：毛颖，典出韩愈《毛颖传》——毛笔拟人得名「毛颖」，与 dsh-paoding（庖丁）同一命名脉络。
+命名：毛颖，典出韩愈《毛颖传》——毛笔拟人得名「毛颖」。
 
 ## 1. 核心洞察与架构
 
@@ -32,7 +32,7 @@ dsh-maoying/
   docs/                   # design.md（本文）、spec.md（数据规范）
 ```
 
-### 安装机制（照搬 paoding 已验证路径）
+### 安装机制
 
 1. `dsh plugin --profile web add dsh-maoying`：包经 pnpm 装进 profile，包内 cordis.patch.yml 声明 bundle insert（`- insert: [- id: maoying-installer, name: dsh-maoying]`），boot 时并入补丁树。
 2. index.mjs（cordis 插件 main）启动时执行 ensurePresetInstalled：
@@ -54,7 +54,7 @@ dsh-maoying/
 
    - 全程幂等：标记块已存在且版本一致则跳过；不一致则整块替换。YAML 解析/序列化用 `yaml` npm 包（dependencies 声明）。
    - 按宿主版本自动选委派行形状（0.4.0 起）：≥0.2.1-rc.2 写 v2 AgentPreset 六行块（agent.cordis.v2.yml），否则写 v1 内联单行块；宿主升降级重启即整块切换，不再需要任何降级提示（形态依据见 §8，支持面见 §6）。
-3. 卸载 `dsh plugin remove dsh-maoying` 后：bundle 行消失，托管块与 .agent-presets/maoying/ 需手动删（README 写明两条 rm 命令；与 paoding 一致）。
+3. 卸载 `dsh plugin remove dsh-maoying` 后：bundle 行消失，托管块与 .agent-presets/maoying/ 需手动删（README 写明两条 rm 命令）。
 
 ## 2. 功能裁决（一期范围）
 
@@ -75,7 +75,7 @@ dsh-maoying/
 | 一致性检查（冲突/时间线/伏笔/设定） | review 角色（审校）：四维扫描 + 审稿清单 | 委派角色 |
 | 导出 EPUB/HTML/MD/TXT | **二期**（一期只留 CLI stats/index） | — |
 | Token 用量统计 | 无需（DSH 自带） | — |
-| Web 管理面板 | **三期**（照 paoding-config-ui 机制） | — |
+| Web 管理面板 | **三期** | — |
 | 素材考据调研 | **research 角色**：web 检索历史/地理/专业素材，笔记落 novel/research/ | 委派角色（DSH 差异化优势） |
 
 ## 3. novel/ 数据规范（决策定稿）
@@ -122,7 +122,7 @@ novel/
 | lore | 设定管理员 | 章节/角色/世界观/伏笔/时间线/记忆/线索板维护，出场记录与伏笔状态推进 | continuable | read glob grep write edit bash ask_user_question todo_write |
 | research | 素材调研员 | 联网考据（历史/地理/专业领域），笔记落 novel/research/ | one-shot | web_search web_fetch glob grep read write bash ask_user_question todo_write |
 
-主编工具面（restrict.mjs 白名单）：outline write review lore research + send_message list_agents interrupt_agent + glob grep read read_image bash + todo_write ask_user_question get_goal create_goal update_goal exit_plan_mode job_output job_list job_kill。registry deny: ['skill']（同 paoding，堵 ~1.3k 技能目录注入）。
+主编工具面（restrict.mjs 白名单）：outline write review lore research + send_message list_agents interrupt_agent + glob grep read read_image bash + todo_write ask_user_question get_goal create_goal update_goal exit_plan_mode job_output job_list job_kill。registry deny: ['skill']（堵 ~1.3k 技能目录注入）。
 
 注意：toolFilter.allow 一律不放 mcp__* 工具（子代理创建时 tools.restrict 校验名字必须在注册面，MCP 是否挂载是 host 事实，硬编码会让未装 tavily 的宿主直接建不出子代理）。
 
