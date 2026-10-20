@@ -835,29 +835,21 @@ export async function registerCreatorRoutes(ctx) {
             } catch { return '[unserializable]' }
           }
           const registryDump = {}
-          for (const svcName of ['agent-preset-registry', 'agentPresets', 'presets']) {
-            try {
-              const svc = typeof ctx.get === 'function' ? ctx.get(svcName) : null
-              if (!svc) continue
-              const entry = { __type: typeof svc, __keys: Object.keys(svc).slice(0, 60) }
-              for (const m of ['list', 'read', 'all', 'definitions', 'inventory', 'entries']) {
-                if (typeof svc[m] === 'function') {
-                  try {
-                    const r = svc[m]()
-                    entry[m] = r && typeof r.then === 'function' ? '[async]' : jsonSafe(r)
-                  } catch (e) { entry[m] = `throw: ${e?.message ?? e}` }
-                }
-              }
-              registryDump[svcName] = entry
-            } catch { /* 逐个吞错 */ }
-          }
+          try {
+            const svc = typeof ctx.get === 'function' ? ctx.get('agentPresets') : null
+            if (svc && typeof svc.list === 'function') {
+              // list() 返回每张 preset 的 {id,name,order,broken}——broken 即
+              // 面板上显示的逐行激活诊断（注册表自带审计，一行一条不可用原因）。
+              const rows = await svc.list()
+              registryDump.presets = jsonSafe(rows)
+            }
+          } catch (e) { registryDump.error = String(e?.message ?? e) }
           json(res, 200, {
             ok: true,
             hostVersion: dbg.version,
             trace: dbg.trace,
             shape,
             registry: registryDump,
-            ctxKeys: (() => { try { return Object.keys(ctx).slice(0, 80) } catch { return [] } })(),
             runtime: {
               argv: process.argv,
               execPath: process.execPath,
