@@ -7,22 +7,22 @@
 /* ── 侧栏底部入口（sidebar.footer.action 键控槽）────────────────────────
    宽栏 42px 圆角行（图标 + 文案）/ 窄栏 36px 圆钮，观感照设置壳动作条。 */
 .myt-footerBtn {
-  display: flex;
+  display: inline-flex;
   align-items: center;
   gap: 8px;
-  width: 42px;
+  width: calc(100% + 4px);
   height: 42px;
-  flex: none;
-  padding: 0;
+  margin: 0 -2px;
+  padding: 0 10px 0 8px;
   box-sizing: border-box;
-  border: 1px solid transparent;
+  border: none;
   border-radius: 12px;
-  background: transparent;
-  color: var(--dsw-alias-label-secondary);
+  background: 0 0;
+  color: var(--dsw-alias-label-primary);
   cursor: pointer;
-  justify-content: center;
   overflow: hidden;
-  font: inherit;
+  font-family: inherit;
+  font-size: 14px;
   transition: background 0.12s ease, color 0.12s ease;
 }
 .myt-footerBtn:hover {
@@ -38,14 +38,23 @@
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
-  font-size: 12px;
-  line-height: 16px;
-  font-weight: 500;
 }
 .myt-footerBtn.myt-footerRail {
+  border-radius: 50%;
+  justify-content: center;
+  gap: 0;
   width: 36px;
   height: 36px;
-  border-radius: 50%;
+  margin: 8px 0 10px;
+  padding: 0;
+}
+
+/* 宿主 footerActions 默认横向 flex，多个插件动作会挤成一行；改一行一个。
+   层级：footerActions > div[data-slot="sidebar.footer.action"]（SlotOutlet
+   锚点，display: contents 不生成盒）> 各家按钮——flex-direction 必须落在
+   锚点的父容器上。:has() 不支持的老浏览器回落并排，不破坏功能。 */
+div:has(> div[data-slot="sidebar.footer.action"]) {
+  flex-direction: column;
 }
 
 /* ── 全页 overlay（data-dsh-maoying-view / html[data-dsh-maoying-active]）──
