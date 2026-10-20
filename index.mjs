@@ -198,6 +198,32 @@ export function hostRejectsInlineDelegation(version) {
 
 /** 宿主包版本：从 <home>/node_modules require('@deepseek-ai/dsh/package.json')。 */
 export function readHostVersion(dshHome) {
+  // ① 运行入口锚定（最真）：argv[1] 是宿主自己的入口脚本——CLI 下是
+  //    @deepseek-ai/dsh 包里的 bin/入口，桌面应用下是 app.asar/dsh 内的入口
+  //    （Electron 主进程的 fs 能透读 asar）。向上找最近的 @deepseek-ai/dsh
+  //    package.json，读到的就是当前进程真实版本。home 全局安装的版本可能
+  //    陈旧（例如 CLI 升级前留下的 rc.7），绝不能只信它。
+  try {
+    let dir = path.dirname(path.resolve(process.argv?.[1] ?? ''))
+    for (let i = 0; i < 8 && dir && dir !== path.dirname(dir); i++, dir = path.dirname(dir)) {
+      const pkgPath = path.join(dir, 'package.json')
+      if (!existsSync(pkgPath)) continue
+      const pkg = JSON.parse(readFileSync(pkgPath, 'utf8'))
+      if (pkg?.name === '@deepseek-ai/dsh' && typeof pkg.version === 'string' && pkg.version !== '') {
+        return pkg.version
+      }
+    }
+  } catch { /* 入口缺失或不可读时落下一档 */ }
+  // ② Electron 主进程：桌面应用版本即其内置 dsh 的版本。纯 Node 下 require
+  //    ('electron') 得到的是路径字符串（或直接找不到），类型守卫天然挡掉。
+  try {
+    const electron = createRequire(import.meta.url)('electron')
+    if (electron && typeof electron === 'object' && typeof electron.app?.getVersion === 'function') {
+      const v = electron.app.getVersion()
+      if (typeof v === 'string' && v !== '') return v
+    }
+  } catch { /* 非 Electron 环境常态 */ }
+  // ③ 兜底：home 全局安装（老 CLI 链路；可能陈旧，只在①②都拿不到时兜底）
   try {
     const req = createRequire(path.join(dshHome, 'node_modules', 'package.json'))
     const pkg = req('@deepseek-ai/dsh/package.json')

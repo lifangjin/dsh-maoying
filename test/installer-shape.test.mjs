@@ -23,7 +23,7 @@ import { fileURLToPath } from 'node:url'
 
 const PLUGIN_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 
-const { MANAGED_BEGIN, MANAGED_END, composeManagedRows, ensurePresetInstalled, hostRejectsInlineDelegation, stringifyManagedBlock } =
+const { MANAGED_BEGIN, MANAGED_END, composeManagedRows, ensurePresetInstalled, hostRejectsInlineDelegation, readHostVersion, stringifyManagedBlock } =
   await import('../index.mjs')
 
 // ── 假 home 与假宿主版本 ─────────────────────────────────────────────────────
@@ -159,6 +159,27 @@ test('宿主 0.2.1-rc.1 → v1；版本读不到 → 保守侧 v1', () => {
       const { doc } = readManagedBlock(home, yamlOf(home))
       assert.equal(doc[0].insert.length, 1, String(version))
     })
+  }
+})
+
+test('readHostVersion：argv[1] 锚定真实宿主入口，优先于陈旧的 home 全局安装', () => {
+  // 回归背景：桌面应用（宿主在 app 包里）下 home 全局安装可能是 rc.7 级别的
+  // 老 CLI 残留，曾把 v2 形态误判成 v1，0.2.1 启用即抛 persona no longer
+  // supported。argv[1]（宿主入口脚本）必须赢过 home 兜底。
+  const home = mkdtempSync(path.join(os.tmpdir(), 'maoying-argv-'))
+  cleanup.push(home)
+  const fakeEntryDir = path.join(home, 'fake-dsh')
+  mkdirSync(fakeEntryDir, { recursive: true })
+  writeFileSync(path.join(fakeEntryDir, 'entry.mjs'), '// 假宿主入口\n', 'utf8')
+  writeFileSync(path.join(fakeEntryDir, 'package.json'), JSON.stringify({ name: '@deepseek-ai/dsh', version: '9.9.9-argv' }), 'utf8')
+  // home 兜底放一个明显更旧的版本：若 argv 锚定失效就会错读成它
+  writeHostVersion(home, '0.1.0-rc.7')
+  const prevArgv1 = process.argv[1]
+  process.argv[1] = path.join(fakeEntryDir, 'entry.mjs')
+  try {
+    assert.equal(readHostVersion(home), '9.9.9-argv')
+  } finally {
+    process.argv[1] = prevArgv1
   }
 })
 
