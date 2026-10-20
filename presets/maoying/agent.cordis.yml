@@ -13,8 +13,6 @@
 #                            内联 persona/toolFilter 形状，0.1.7 – 0.2.1-rc.1 支持），
 #                            子代理创建时以 per-child tools.restrict() 只保留各自 allow
 #
-# 功能概念改写自 mythpen（GPL-3.0，只借鉴方法论不搬代码）；实现全部原创。
-
 # ── identity ────────────────────────────────────────────────────────────────
 
 - id: persona

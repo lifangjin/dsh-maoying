@@ -1,6 +1,6 @@
 # dsh-maoying（毛颖）
 
-毛颖者，笔也——韩愈作《毛颖传》，把一支毛笔写成有封地有爵位的臣子。dsh-maoying 把这支笔装进 DSH（DeepSeek Harness）：**一支管着一班帮手、守着一摞书稿的毛笔**——网文创作辅助插件，功能概念改写自 [niyongsheng/mythpen](https://github.com/niyongsheng/mythpen)（GPL-3.0，只借鉴功能概念，未使用其任何代码），全部实现原创，MIT 发布。
+毛颖者，笔也——韩愈作《毛颖传》，把一支毛笔写成有封地有爵位的臣子。dsh-maoying 把这支笔装进 DSH（DeepSeek Harness）：**一支管着一班帮手、守着一摞书稿的毛笔**——网文创作辅助插件，全部实现原创，MIT 发布。
 
 装上之后，主 agent 变身**网文主编（创作总监）**：带七阶段工作流与六步写作法，把大纲、正文、审校、设定维护、素材考据分别委派给五个只带本行工具的帮手；整部小说就是工作区里的 `novel/` 结构化 markdown/YAML 目录（角色卡、伏笔状态机、时间线、线索板、叙事记忆）——agent 直接读写文件，**没有数据库，没有 API 层**。查「所有未回收伏笔」就是 grep 一行。
 
@@ -13,7 +13,7 @@
 - **伏笔状态机**：planted（埋设）→ progressing（推进）→ resolved（回收）/ abandoned（弃用），埋设与回收记章节号、预期回收章节排期、优先级分档——长篇不断线，活跃伏笔超 15 条主编主动提醒清理。
 - **上下文按需取**：主编先读 index.yml 概览，写到哪章读哪章（前章结尾约 1500 字 + 该章大纲 + 出场角色卡 + 活跃伏笔节选），不把整本书塞进上下文。
 - **工具面收窄**：主编只见「角色委派 + 内部检索 + 协调」白名单，帮手各带本行工具（审校只读、考据只带联网+落笔记）；每次请求的工具开销与上下文占用随之下降。
-- **素材考据**：research 帮手联网检索历史/地理/专业领域素材，笔记落 `novel/research/`，区分史实/通说/演义并附来源——mythpen 没有的能力，DSH 架构的红利。
+- **素材考据**：research 帮手联网检索历史/地理/专业领域素材，笔记落 `novel/research/`，区分史实/通说/演义并附来源——DSH 架构的红利。
 - **CLI 兜底**：`maoying init / stats / index` 三条零依赖命令管脚手架、字数统计与章节概览重建。
 
 ## 快速开始
@@ -132,6 +132,5 @@ rm -rf "${DSH_HOME:-$HOME/.dsh}/skills/"maoying-*
 
 ## 致谢
 
-- 功能概念改写自 [niyongsheng/mythpen](https://github.com/niyongsheng/mythpen)（GPL-3.0）：七阶段工作流、六步写作法、共创流程、五维叙事字段、伏笔/时间线/线索板的数据模型思路。**未使用其任何代码与 prompt 文本**，本仓库全部实现原创。
 - 编排机制（bundle patch 挂载、预设启动安装器、托管块手术、工具面收窄）参考同作者 [lifangjin/dsh-paoding](https://github.com/lifangjin/dsh-paoding)（MIT）的已验证路径。
 - 「毛颖」得名于韩愈《毛颖传》，与庖丁（dsh-paoding，典出《庄子》）同一命名脉络。

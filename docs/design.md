@@ -1,15 +1,14 @@
 # dsh-maoying（毛颖）设计文档
 
-网文创作辅助 DSH 插件。功能概念改写自 [niyongsheng/mythpen](https://github.com/niyongsheng/mythpen)（桌面 AI 小说工具，GPL-3.0）——**只借鉴功能概念与数据模型思路，不搬运任何代码与 prompt 文本**，本仓库全部代码重写，以 MIT 发布。
+网文创作辅助 DSH 插件。全部实现原创，以 MIT 发布。
 
 命名：毛颖，典出韩愈《毛颖传》——毛笔拟人得名「毛颖」，与 dsh-paoding（庖丁）同一命名脉络。
 
 ## 1. 核心洞察与架构
 
-mythpen 的本质：LLM → function calling（30+ 工具）→ Express API → SQLite。DSH 里的天然等价物更省：
+常见 AI 小说工具的链路是 LLM → function calling（30+ 工具）→ Express API → SQLite；毛颖走 DSH 里天然更省的一条：
 
 ```
-mythpen:  LLM → 30个 function tools → Express API → SQLite
 maoying:  agent → glob/grep/read/edit/write → 工作区 novel/ 结构化文件
 ```
 
@@ -57,9 +56,9 @@ dsh-maoying/
    - 按宿主版本自动选委派行形状（0.4.0 起）：≥0.2.1-rc.2 写 v2 AgentPreset 六行块（agent.cordis.v2.yml），否则写 v1 内联单行块；宿主升降级重启即整块切换，不再需要任何降级提示（形态依据见 §8，支持面见 §6）。
 3. 卸载 `dsh plugin remove dsh-maoying` 后：bundle 行消失，托管块与 .agent-presets/maoying/ 需手动删（README 写明两条 rm 命令；与 paoding 一致）。
 
-## 2. mythpen 功能映射（一期范围裁决）
+## 2. 功能裁决（一期范围）
 
-| mythpen 功能 | maoying 一期 | 载体 |
+| 功能 | maoying 一期 | 载体 |
 |---|---|---|
 | 项目管理（类型/篇幅/语言） | novel/project.yml | 文件规范 |
 | 7 阶段工作流状态机 | 保留，写 project.yml phase | 主编人设 |
@@ -77,7 +76,7 @@ dsh-maoying/
 | 导出 EPUB/HTML/MD/TXT | **二期**（一期只留 CLI stats/index） | — |
 | Token 用量统计 | 无需（DSH 自带） | — |
 | Web 管理面板 | **三期**（照 paoding-config-ui 机制） | — |
-| （mythpen 没有）素材考据调研 | **research 角色**：web 检索历史/地理/专业素材，笔记落 novel/research/ | 委派角色（DSH 差异化优势） |
+| 素材考据调研 | **research 角色**：web 检索历史/地理/专业素材，笔记落 novel/research/ | 委派角色（DSH 差异化优势） |
 
 ## 3. novel/ 数据规范（决策定稿）
 

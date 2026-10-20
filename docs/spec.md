@@ -4,7 +4,7 @@
 
 ## 0. 设计理由：为什么是文件而不是 SQLite
 
-mythpen 的链路是 LLM → 30 个 function tools → Express API → SQLite；毛颖把它砍成 agent → 文件工具 → `novel/` 目录。这不是省事，是同一种创作负载下的更优解：
+常见做法是 LLM → function calling → Express API → SQLite；毛颖砍成 agent → 文件工具 → `novel/` 目录。这不是省事，是同一种创作负载下的更优解：
 
 - **查询形态匹配**。小说创作的查询是「所有未回收伏笔」「这个角色出场过几章」「v01 的时间线」——全是 grep 一行的事，不需要 JOIN，更不需要 ORM。SQLite 的强项（并发写、随机读、事务）在单人单会话的写作流里用不上。
 - **人机共读**。作者随时打开 foreshadows.yml 看账本、手改一个错字；数据库要做到同样的事得先写一层 UI 或 CLI——而文件天然免费。
