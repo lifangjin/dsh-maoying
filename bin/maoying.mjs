@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * maoying — 毛颖网文创作项目 CLI（init / stats / index / export）
+ * maoying — 毛颖网文创作项目 CLI（init / stats / index / export / brief / check）
  *
  * 零依赖：只用 node:fs / node:path / node:url / node:crypto，模板目录经
  * import.meta.url 定位，任意 cwd 可用。novel/ 目录的数据规范见
@@ -10,6 +10,9 @@
  *   maoying stats [dir]   逐章字数（CJK 计数）、状态分布、当前 phase
  *   maoying index [dir]   从 volumes.yml + chapters/ 重建 index.yml（派生文件）
  *   maoying export [dir]  导出全书：--format md|txt|epub（默认 md）、--out <目录>
+ *   maoying brief [dir] <chapter> [--out <文件>]
+ *                         组装某章写作卡（章纲+前章结尾+出场角色卡+活跃伏笔）
+ *   maoying check [dir]   静态体检（不调模型）：frontmatter/枚举/章号/伏笔引用等
  *
  * 子命令出错 exit 1，中文报错。
  */
@@ -22,7 +25,7 @@ import { fileURLToPath } from 'node:url'
 import { buildEpub } from '../lib/epub.mjs'
 // 解析层与面板共用（lib/novel-parse.mjs）；parseFlatYamlArray 沿用旧名
 // parseSimpleYaml，保持本文件其余代码原样不动。
-import { buildIndexYaml, collectChapters, parseFlatYamlArray as parseSimpleYaml } from '../lib/novel-parse.mjs'
+import { buildBrief, buildIndexYaml, checkProject, collectChapters, parseFlatYamlArray as parseSimpleYaml } from '../lib/novel-parse.mjs'
 
 const PLUGIN_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const TEMPLATE_DIR = path.join(PLUGIN_ROOT, 'templates', 'novel')
@@ -335,6 +338,82 @@ function cmdExport(args) {
   console.log(`格式 ${format}；${chapters.length} 章，总字数 ${totalWords}（CJK 计数）。`)
 }
 
+// ── brief ───────────────────────────────────────────────────────────────────
+
+/**
+ * maoying brief [dir] <chapter> [--out <文件>]
+ *
+ * 组装某章写作卡（章纲 + 前章结尾 + 出场角色卡 + 活跃伏笔 + 本章状态），
+ * 给作者带去任意编辑器/其他 AI。不带 --out 时写卡打到 stdout，提示与提醒
+ * 走 stderr，重定向出去的就是干净的卡；带 --out 落盘。组装逻辑在
+ * lib/novel-parse.mjs 的 buildBrief（与面板共用解析层）。
+ */
+function cmdBrief(args) {
+  let dirArg = null
+  let chapterArg = null
+  let outArg = null
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i]
+    if (arg === '--out') {
+      const value = args[++i]
+      if (value === undefined) fail('选项 --out 缺参数——--out 取输出文件路径')
+      outArg = value
+    } else if (arg.startsWith('--out=')) {
+      outArg = arg.slice('--out='.length)
+    } else if (arg.startsWith('-')) {
+      fail(`未知选项「${arg}」——brief 只认 --out <文件>`)
+    } else if (chapterArg !== null) {
+      fail(`多余的位置参数「${arg}」——brief 只接受 [dir] <chapter> 两个位置参数`)
+    } else if (dirArg === null) {
+      dirArg = arg
+    } else {
+      chapterArg = arg
+    }
+  }
+  if (dirArg === null && chapterArg === null) {
+    fail('用法：maoying brief [dir] <chapter> [--out <文件>]——chapter 可写文件名（v01-c002.md）、stem（v01-c002）、「卷-章」（1-2）或裸章号（2）')
+  }
+  // 只给一个位置参数时把它当章号用（dir 走默认 ./novel），这是常用路径
+  const root = path.resolve(chapterArg === null ? 'novel' : dirArg)
+  const brief = buildBrief(root, chapterArg ?? dirArg)
+  if (!brief.ok) fail(brief.reason)
+  for (const warning of brief.warnings) console.error(`提醒：${warning}`)
+  if (outArg !== null) {
+    const outPath = path.resolve(outArg)
+    mkdirSync(path.dirname(outPath), { recursive: true })
+    writeFileSync(outPath, brief.text, 'utf8')
+    console.log(`写作卡已写入：${outPath}`)
+    console.log('拿去写，写完丢回给主编收稿。')
+  } else {
+    process.stdout.write(brief.text)
+    console.error('—— 写作卡到这儿为止。拿去写，写完丢回给主编收稿。')
+  }
+}
+
+// ── check ───────────────────────────────────────────────────────────────────
+
+/**
+ * maoying check [dir]
+ *
+ * 静态体检：只查文件规范，不调模型（LLM 审校走主编）。检查逻辑在
+ * lib/novel-parse.mjs 的 checkProject。有 error 退出码 1，只有 warn 退出码 0。
+ */
+function cmdCheck(targetArg) {
+  const root = path.resolve(targetArg ?? 'novel')
+  const result = checkProject(root)
+  console.log(`静态体检：${root}（只查文件规范，不调模型）`)
+  if (result.problems.length === 0) {
+    console.log('未发现问题。')
+  } else {
+    for (const p of result.problems) {
+      console.log(`${p.level === 'error' ? '[错误]' : '[提醒]'} ${p.file}：${p.message}`)
+    }
+  }
+  const { chapters, outlines, foreshadows, problems } = result.summary
+  console.log(`汇总：${chapters} 章、${outlines} 章纲、${foreshadows} 条伏笔；错误 ${problems.error} 个，提醒 ${problems.warn} 个。`)
+  if (!result.ok) process.exit(1)
+}
+
 // ── 入口 ────────────────────────────────────────────────────────────────────
 
 const HELP_TEXT = `毛颖（maoying）—— 网文创作项目 CLI
@@ -344,10 +423,15 @@ const HELP_TEXT = `毛颖（maoying）—— 网文创作项目 CLI
   maoying stats [dir]    逐章字数（CJK 计数）、状态分布、当前阶段
   maoying index [dir]    从 volumes.yml + chapters/ 重建 index.yml（派生文件）
   maoying export [dir]   导出全书：--format md|txt|epub（默认 md），--out <目录> 改输出位置
+  maoying brief [dir] <chapter>
+                         组装某章写作卡（章纲+前章结尾+出场角色卡+活跃伏笔）；--out <文件> 落盘，缺省打到 stdout
+  maoying check [dir]    静态体检（不调模型）：frontmatter 完整性、枚举值、章号卷号一致、伏笔章号引用、时间线年份、关系卡引用
 
 说明：
   novel/ 目录的数据规范见 templates/novel/README.md（或项目内 novel/README.md）。
   export 输出目录默认 <dir>/exports/，文件名 <书名>-<YYYYMMDD>.<扩展名>。
+  brief 的 chapter 可写文件名（v01-c002.md）、stem（v01-c002）、「卷-章」（1-2）或裸章号（2）。
+  check 有 error 退出码 1，只有 warn 退出码 0。
   所有命令零依赖，任意 cwd 可用；出错时退出码 1。`
 
 function main(argv) {
@@ -360,11 +444,13 @@ function main(argv) {
   if (command === 'stats') return cmdStats(rest[0])
   if (command === 'index') return cmdIndex(rest[0])
   if (command === 'export') return cmdExport(rest)
+  if (command === 'brief') return cmdBrief(rest)
+  if (command === 'check') return cmdCheck(rest[0])
   if (command === undefined) {
-    console.error('maoying: 缺少子命令（init / stats / index / export，--help 看用法）')
+    console.error('maoying: 缺少子命令（init / stats / index / export / brief / check，--help 看用法）')
     process.exit(1)
   }
-  fail(`未知子命令「${command}」——可用：init / stats / index / export（--help 看用法）`)
+  fail(`未知子命令「${command}」——可用：init / stats / index / export / brief / check（--help 看用法）`)
 }
 
 main(process.argv.slice(2))

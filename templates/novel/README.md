@@ -20,7 +20,7 @@
 
 ## project.yml
 
-书稿元信息，平键。`phase` 是七阶段工作流的状态机指针，每完成一个里程碑由主编推进。
+书稿元信息，平键。`phase` 是七阶段工作流的状态机指针，每完成一个里程碑由主编推进；`mode` 决定正文归谁写。
 
 ```yaml
 title: 未命名书稿      # 书名
@@ -29,8 +29,11 @@ genre: 东方玄幻        # 题材
 length: 约100万字      # 预期篇幅
 language: zh          # 正文语言
 phase: idea           # 七阶段：idea|setting|outline|writing|review|consistency|export
+mode: ai-draft        # 共创模式：ai-draft（AI 代笔，默认）| co-write（逐章指派谁写）| author-draft（全书作者亲笔）
 description: 一句话简介
 ```
+
+`mode` 三值：`ai-draft`（默认）AI 代笔，走 Writing 六步法；`co-write` 逐章指派谁写，章节 frontmatter 可记 `writer: author | ai`；`author-draft` 全书作者亲笔，主编只备料、审稿、记账，`chapters/` 正文唯作者可改。缺省（含旧项目无此键）按 `ai-draft`。
 
 ## volumes.yml
 
@@ -63,6 +66,22 @@ interpersonal_tension: 本章人物关系中的压力与变化
 
 正文……
 ```
+
+## outlines/vXX-cXXX.md
+
+章纲：共创模式（co-write / author-draft）下大纲师写给作者的创作输入，与章节文件一一对应（`outlines/v01-c005.md` ↔ `chapters/v01-c005.md`）。纯 markdown、无 frontmatter——作者在任意编辑器打开就要能看。五件内容写全：
+
+```markdown
+# 第 5 章 雪夜来客
+
+- 本章目标：……（这章要完成什么叙事任务）
+- 节拍：……（场景推进顺序与情绪起伏）
+- 出场角色：……（谁上场、各带什么目的）
+- 需埋/需收伏笔：……（对照 foreshadows.yml 报 id）
+- 与前章接口：……（从哪个钩子接、结尾钩到哪）
+```
+
+颗粒度标准：作者拿着就能动笔。章纲是计划不是章节事实，不入 index.yml；大纲师写、作者读、review 收稿时对照评偏离——作者没照章纲写不算错，账本永远跟正文走。
 
 ## characters/<slug>.md
 
@@ -137,11 +156,14 @@ references:               # 依据来源，一行一个（已知设定 id 或现
   title: 老者留下的半块玉佩
   status: planted         # planted|progressing|resolved|abandoned
   priority: high          # high|normal|low
+  source: plan            # 可选：plan（章纲/大纲计划登记，缺省）| backfill（共创收稿从作者正文回填）
   planted_chapter: v01-c001
   expected_resolve: v01-c020
   resolved_chapter: ""    # resolved 时必填
   notes: 回收方式备忘
 ```
+
+`source` 可选：共创收稿时 lore 从作者正文里回填认领的伏笔标 `backfill`，章纲/大纲阶段计划登记的标 `plan`（缺省）。账本跟随正文而非章纲——作者没照章纲写，以正文为准回填。
 
 ## timeline.yml
 

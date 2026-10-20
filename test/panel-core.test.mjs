@@ -135,14 +135,23 @@ test('parseStateSnapshot（回退解析）：§3 契约字段逐一就位', () =
     started: 'v01-c003', ended: '',
   })
 
-  // foreshadows：裸标量条目被跳过并警告；缺 status 行的条目 status 为 null
+  // foreshadows：裸标量条目被跳过并警告；缺 status 行的条目 status 为 null；
+  // source（五期）夹具回填条目为 backfill，缺省一律归 plan
   assert.equal(snap.foreshadows.length, 3)
   assert.equal(snap.foreshadows[0].id, 'fs-001')
   assert.equal(snap.foreshadows[0].status, 'planted')
   assert.equal(snap.foreshadows[0].priority, 'high')
   assert.equal(snap.foreshadows[0].resolved_chapter, '')
+  assert.equal(snap.foreshadows[0].source, 'plan')
+  assert.equal(snap.foreshadows[1].id, 'fs-002')
+  assert.equal(snap.foreshadows[1].source, 'backfill')
   assert.equal(snap.foreshadows[2].id, 'fs-003')
   assert.equal(snap.foreshadows[2].status, null)
+  assert.equal(snap.foreshadows[2].source, 'plan')
+  assert.deepEqual(Object.keys(snap.foreshadows[1]).sort(), [
+    'expected_resolve', 'id', 'notes', 'planted_chapter', 'priority',
+    'resolved_chapter', 'source', 'status', 'title',
+  ].sort())
 
   // timeline / memories / clues
   assert.equal(snap.timeline[0].year, '玄历三年冬')
@@ -161,6 +170,16 @@ test('parseStateSnapshot（回退解析）：§3 契约字段逐一就位', () =
   assert.equal(snap.science[0].label, 'extrapolation')
   assert.deepEqual(snap.science[0].references, ['known:灵气密度与纬度'])
   assert.equal(snap.research[0].topic, '北境封冻期风物考')
+
+  // outlines（五期）：按 chapterSortKey（卷、章号）升序；孤儿章纲（正文未写）
+  // 照列；words 为 CJK 计数；excerpt 为折叠空白的节选原料
+  assert.deepEqual(snap.outlines.map((o) => o.file), ['v01-c001.md', 'v01-c003.md'])
+  assert.deepEqual(snap.outlines.map((o) => o.chapter), ['v01-c001.md', 'v01-c003.md'])
+  assert.ok(snap.outlines[0].words > 0, `章纲 words 应为正整数，实得 ${snap.outlines[0].words}`)
+  assert.ok(snap.outlines[1].words > 0)
+  assert.ok(snap.outlines[0].excerpt.includes('夜客抵债'))
+  assert.ok(!snap.outlines[0].excerpt.includes('\n'), 'excerpt 应折叠空白为单行')
+  assert.ok(!snap.warnings.some((w) => w.includes('outlines')), `outlines 正常解析不应告警，实得 ${JSON.stringify(snap.warnings)}`)
 
   // totals
   assert.deepEqual(snap.totals, { chapters: 2, words: 31, byStatus: { pending: 0, writing: 1, review: 0, accepted: 1 } })
@@ -329,9 +348,49 @@ test('readChapter：返回 frontmatter 对象 + 正文；穿越 403；缺文件 
   assert.equal(chapter.frontmatter.title, '雪夜来客')
   assert.equal(chapter.frontmatter.status, 'accepted')
   assert.ok(chapter.body.startsWith('雪下了三天'))
+  // outline（五期）：outlines/ 同 stem 章纲在位 → { file, words, body }
+  assert.ok(chapter.outline, 'v01-c001 应带对应章纲')
+  assert.equal(chapter.outline.file, 'v01-c001.md')
+  assert.ok(chapter.outline.words > 0)
+  assert.ok(chapter.outline.body.includes('章纲'), 'outline.body 应为章纲原文')
+
+  // 无对应章纲的章 → outline 为 null（不告警，抽屉显示「暂无章纲」）
+  const noOutline = readChapter(novel, 'v01-c002.md', { yamlLib: null })
+  assert.equal(noOutline.outline, null)
 
   assertFails(() => readChapter(novel, '../project.yml', { yamlLib: null }), 403)
   assertFails(() => readChapter(novel, 'nope.md', { yamlLib: null }), 404)
+})
+
+test('parseStateSnapshot：outlines/ 目录不存在 → 空数组且不告警（老项目兼容）', () => {
+  const root = makeTmpRoot()
+  const novel = path.join(root, 'novel')
+  mkdirSync(novel, { recursive: true })
+  writeFileSync(path.join(novel, 'project.yml'), 'title: 有章无纲\n', 'utf8')
+  mkdirSync(path.join(novel, 'chapters'), { recursive: true })
+  writeFileSync(path.join(novel, 'chapters', 'v01-c001.md'), `---
+volume: v01
+num: 1
+title: 有章无纲
+status: pending
+---
+
+正文。
+`, 'utf8')
+  const snap = parseStateSnapshot(novel, { yamlLib: null })
+  assert.deepEqual(snap.outlines, [])
+  assert.ok(!snap.warnings.some((w) => w.includes('outlines')), `不应有 outlines 告警，实得 ${JSON.stringify(snap.warnings)}`)
+})
+
+test('parseStateSnapshot：outlines/ 里不合 vXX-cXXX 规范的散文件不列', () => {
+  const root = makeTmpRoot()
+  const novel = buildSampleNovel(root)
+  writeFileSync(path.join(novel, 'outlines', 'scratch.md'), '随手记，不是章纲。\n', 'utf8')
+  writeFileSync(path.join(novel, 'outlines', 'v01-c002.md'), '# 第二章 章纲\n\n- 本章目标：冻河尸语。\n', 'utf8')
+  const snap = parseStateSnapshot(novel, { yamlLib: null })
+  // 散文件被跳过；合规范的照列且仍按卷-章号升序
+  assert.deepEqual(snap.outlines.map((o) => o.file), ['v01-c001.md', 'v01-c002.md', 'v01-c003.md'])
+  assert.equal(snap.outlines[1].chapter, 'v01-c002.md')
 })
 
 test('写操作与快照联动：状态流转后快照 totals 同步变化', () => {

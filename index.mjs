@@ -658,7 +658,9 @@ export async function registerCreatorRoutes(ctx) {
         }
 
         if (route === 'chapter' && req.method === 'GET') {
-          // 章节正文全文（抽屉用）：file 只认 chapters/ 下纯文件名。
+          // 章节正文全文（抽屉用）：file 只认 chapters/ 下纯文件名；响应组装
+          // 直传 readChapter 结果（五期起含对应章纲 outline 字段，无章纲为
+          // null），照 §2 契约 { ok, file, frontmatter, body, outline }。
           const novelDir = resolveNovelRoot(url.searchParams.get('path'), ctx.workspaceRegistry)
           json(res, 200, readChapter(novelDir, url.searchParams.get('file')))
           return

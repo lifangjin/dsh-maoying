@@ -40,7 +40,7 @@ webServer.register({ kind: 'prefix', path: '/api/maoying', handler: async (req, 
 | `client.css` | GET | — | text/css（lib/base.css 现读） |
 | `workspaces` | GET | — | `{ ok, workspaces: [{ path, name, hasNovel }] }`——workspaceRegistry.list() 逐根探测 `<root>/novel/project.yml` |
 | `state` | GET | `path=<root>` | 全量快照（见 §3 契约） |
-| `chapter` | GET | `path`, `file`（chapters/ 下文件名） | `{ ok, file, frontmatter, body }`——正文全文，章节抽屉用 |
+| `chapter` | GET | `path`, `file`（chapters/ 下文件名） | `{ ok, file, frontmatter, body, outline }`——正文全文 + 对应章纲（`{ file, words, body }`，outlines/ 无对应文件时 null），章节抽屉用 |
 | `chapter-status` | POST | `{ path, file, status }` | `{ ok }`——frontmatter status 行原地替换；status 必须 ∈ pending/writing/review/accepted |
 | `foreshadow-status` | POST | `{ path, id, status }` | `{ ok }`——foreshadows.yml 对应条目 status 行替换；∈ planted/progressing/resolved/abandoned |
 | `phase` | POST | `{ path, phase }` | `{ ok }`——project.yml phase 行替换；七态枚举 |
@@ -64,13 +64,14 @@ webServer.register({ kind: 'prefix', path: '/api/maoying', handler: async (req, 
                    "background","motivation","arc","markers" }], // markers 数组，缺省 []
   "relations": [{ "a","b","type","description","intensity","started","ended" }],
   "foreshadows": [{ "id","title","status","priority","planted_chapter",
-                    "expected_resolve","resolved_chapter","notes" }],
+                    "expected_resolve","resolved_chapter","notes","source" }], // source: plan|backfill，缺省 plan
   "timeline": [{ "year","title","description","importance","chapter" }],
   "memories": [{ "category","content","source_chapter" }],
   "clues": [{ "kind","content","related_chapter","resolved" }],
   "world": [{ "file","category","tags","name","description" }],
   "science": [{ "file","label","name","description","references" }],
   "research": [{ "file","topic" }],
+  "outlines": [{ "file","chapter","words","excerpt" }],  // outlines/ 章纲清单，chapter 为对应章节文件名，excerpt 为章纲节选（前 120 字，面板按单写作区块用），无章纲的章不列
   "totals": { "chapters": 12, "words": 38412,
               "byStatus": { "pending": 3, "writing": 2, "review": 1, "accepted": 6 } },
   "generatedAt": "2026-10-19T…Z"
@@ -90,9 +91,9 @@ webServer.register({ kind: 'prefix', path: '/api/maoying', handler: async (req, 
 八个 tab（顺序即默认排布）：
 
 1. **概览**：project 卡（书名大字 + 类型/篇幅/语言 pills + 阶段徽章 + 简介）；统计卡（总字数/章节数/状态分布条）；最近更新（chapters 按 mtime 前 5）；warnings 黄条。
-2. **章节**：表格（卷-章/标题/状态徽章/字数/梗概），状态筛选 pills；行点击开抽屉：GET chapter 显示正文（只读，等宽滚动）+ 五维字段卡 + 状态流转按钮（当前态 → 下一态一键，pending→writing→review→accepted）。
+2. **章节**：表格（卷-章/标题/状态徽章/字数/梗概），状态筛选 pills；表格上方「按单写作」区块——有章纲且 status=pending 的章按序列出（章纲节选 + 状态徽章，共创模式的主工作清单）；行点击开抽屉：GET chapter 显示正文（只读，等宽滚动）+ 章纲对照栏（左右分栏或折叠段）+ 复制文件路径按钮 + 五维字段卡 + 状态流转按钮（当前态 → 下一态一键，pending→writing→review→accepted）。
 3. **角色**：卡墙（姓名/role 徽章四色/年龄性别/性格一句/动机一行），点击看全卡（含 arc/markers/background）。
-4. **伏笔**：四列看板（埋设/推进/已回收/弃用），卡片含 priority 色点（high 红/normal 灰/low 淡）、埋设章→预期回收章、notes 悬浮；卡片按钮：推进到下一状态（planted→progressing→resolved；abandoned 只能从看板拖不动、按钮给「弃用」）。列头计数。
+4. **伏笔**：四列看板（埋设/推进/已回收/弃用），卡片含 priority 色点（high 红/normal 灰/low 淡）、`source: backfill` 的「回填」小徽章（账本回填来的条目，区别于写前规划）、埋设章→预期回收章、notes 悬浮；卡片按钮：推进到下一状态（planted→progressing→resolved；abandoned 只能从看板拖不动、按钮给「弃用」）。列头计数。
 5. **关系图**：canvas 力导向图——节点=角色（radius 随出场无关、固定 18px，名字 label 下方），边=relations（intensity 1-5 → 线宽 1-4px，type 标在边中点 hover 显示 description）；拖拽节点、空白处滚轮缩放、双击复位；intensity 缺省 3。角色多于 30 个时只画与 relations 相连的节点，其余进「未入图」列表。
 6. **时间线**：垂直轴，importance 1-5 → 点大小/颜色深浅，year 左列右卡片。
 7. **设定**：world 按 category 分组列表 + science 三色标签（known 绿/extrapolation 黄/hypothesis 紫，标签下 references 链接列表）。

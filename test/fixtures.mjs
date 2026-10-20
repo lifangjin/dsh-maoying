@@ -36,6 +36,7 @@ author: 试笔人
 genre: 东方玄幻
 length: 约100万字
 language: zh
+mode: ai-draft               # 五期模式开关：ai-draft|co-write|author-draft
 phase: writing             # 七阶段：idea|setting|outline|writing|review|consistency|export
 description: 北境雪灾后的长生局。
 `)
@@ -139,6 +140,7 @@ markers: []
   expected_resolve: v01-c030
   resolved_chapter: ""
   notes: 账本缺页
+  source: backfill           # 五期：账本回填条目（区别于写前规划）
 - id: fs-003
   title: 没写状态的伏笔
   priority: low
@@ -189,6 +191,25 @@ sources:
 ---
 
 封冻八个月的镇子靠凿冰取水。
+`)
+
+  // 章纲（五期）：v01-c003 是孤儿章纲——正文未写（chapters/ 无对应文件），
+  // 验证 state.outlines 照列、面板「按单写作」联交不中自然落榜。
+  put(novel, 'outlines/v01-c001.md', `# 第一章 雪夜来客 章纲
+
+- 本章目标：立「当铺夜客」钩子，玉佩缺口埋线。
+- 节拍：夜客抵债 → 掌柜异常 → 主角验看发现缺口。
+- 出场角色：林晚儿、沈默。
+- 需埋伏笔：半块玉佩（fs-001）。
+- 与前章接口：全书开篇。
+`)
+
+  put(novel, 'outlines/v01-c003.md', `# 第三章 冻河追踪 章纲（正文未写）
+
+- 本章目标：冻河之下第二块玉佩现世。
+- 节拍：凿冰取水 → 尸语 → 沿河追踪。
+- 出场角色：林晚儿。
+- 需收伏笔：玉佩成对线索推进。
 `)
 
   return novel

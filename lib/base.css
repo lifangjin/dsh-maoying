@@ -425,6 +425,98 @@ html[data-dsh-maoying-active]:not([data-dsh-mnemon-active]):not([data-dsh-taskbo
 .myt-dimLabel { font-size: 11px; line-height: 16px; color: var(--dsw-alias-label-tertiary); margin-bottom: 2px; }
 .myt-dimText { font-size: 12px; line-height: 18px; color: var(--dsw-alias-label-secondary); overflow-wrap: anywhere; }
 
+/* ── 五期：章纲对照栏（章节抽屉）──────────────────────────────────────────
+   与正文视觉区分：主题色左边线 + 淡主题色底，深色随令牌自动跟随。 */
+.myt-outlinePanel {
+  border: 1px solid color-mix(in srgb, var(--dsw-alias-state-business-primary) 28%, transparent);
+  border-left: 3px solid var(--dsw-alias-state-business-primary);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--dsw-alias-state-business-primary) 6%, var(--dsw-alias-bg-layer-3));
+  overflow: hidden;
+}
+.myt-outlineHead {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 12px;
+  border: none;
+  background: transparent;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.myt-outlineHead:hover { background: var(--dsw-alias-interactive-bg-hover); }
+.myt-outlineTitle { font-size: 12px; line-height: 18px; font-weight: 600; color: var(--dsw-alias-state-business-primary); }
+.myt-outlineWords { font-size: 11px; line-height: 16px; color: var(--dsw-alias-label-tertiary); font-variant-numeric: tabular-nums; }
+.myt-outlineChevron { display: inline-flex; margin-left: auto; color: var(--dsw-alias-label-tertiary); }
+.myt-outlineBody {
+  margin: 0;
+  padding: 10px 12px 12px;
+  border-top: 1px solid color-mix(in srgb, var(--dsw-alias-state-business-primary) 18%, transparent);
+  color: var(--dsw-alias-label-secondary);
+  font-size: 12px;
+  line-height: 20px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 32vh;
+  overflow-y: auto;
+}
+/* 无章纲时的淡字占位（共创模式下提示作者先要章纲）*/
+.myt-outlineEmpty {
+  padding: 8px 12px;
+  border: 1px dashed var(--dsw-alias-border-l2);
+  border-left: 3px solid var(--dsw-alias-border-l2);
+  border-radius: 10px;
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 12px;
+  line-height: 18px;
+}
+
+/* ── 五期：伏笔回填徽章（source: backfill，区别于写前规划条目）──────────── */
+.myt-backfillBadge {
+  flex: none;
+  padding: 0 6px;
+  border: 1px solid color-mix(in srgb, var(--dsw-alias-state-warn-primary) 40%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--dsw-alias-state-warn-primary) 12%, transparent);
+  color: var(--dsw-alias-state-warn-primary);
+  font-size: 10px;
+  line-height: 14px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+/* ── 五期：按单写作区块（章节 tab 顶部，共创模式主工作清单）─────────────── */
+.myt-writeOrder { gap: 4px; }
+.myt-writeOrderList { display: flex; flex-direction: column; }
+.myt-writeOrderRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 4px;
+  border: none;
+  border-bottom: 1px solid var(--dsw-alias-border-l1);
+  background: transparent;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.myt-writeOrderRow:last-child { border-bottom: none; }
+.myt-writeOrderRow:hover { background: var(--dsw-alias-interactive-bg-hover); border-radius: 8px; }
+.myt-writeOrderRow:hover .myt-chTitle { color: var(--dsw-alias-state-business-primary); }
+.myt-writeOrderRow .myt-chTitle { flex: 0 1 auto; }
+.myt-writeOrderExcerpt {
+  flex: 1 1 0;
+  min-width: 0;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--dsw-alias-label-tertiary);
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
 /* ── 角色 tab：卡墙 + 全卡弹层 ─────────────────────────────────────────── */
 .myt-charWall { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 12px; }
 .myt-charCard { cursor: pointer; gap: 8px; text-align: left; }

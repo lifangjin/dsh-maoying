@@ -27,7 +27,7 @@
 字段与最小示例见速查版（`templates/novel/README.md`），此处只补约定：
 
 ### project.yml
-`phase` 七态 `idea|setting|outline|writing|review|consistency|export` 只能由主编推进（帮手不得越权改），且必须顺序推进不可跳越；推进时主编须向用户简报。`language` 影响写手与审校的语言纪律（如 `zh` 不允许成段外文）。
+`phase` 七态 `idea|setting|outline|writing|review|consistency|export` 只能由主编推进（帮手不得越权改），且必须顺序推进不可跳越；推进时主编须向用户简报。`language` 影响写手与审校的语言纪律（如 `zh` 不允许成段外文）。`mode` 三值决定正文归谁写：`ai-draft`（缺省，AI 代笔，主编走 Writing 六步法）/ `co-write`（逐章指派谁写，主编动笔前先问清本章归谁）/ `author-draft`（全书作者亲笔，主编只备料、审稿、记账，永不代写）。文件里没有 `mode` 键的旧项目一律按 `ai-draft` 处理。
 
 ### volumes.yml
 `id` 与章节文件名前缀严格一致（`v01` ↔ `chapters/v01-cXXX.md`），index.yml 的卷分组按本文件顺序输出。`chapters` 范围写法 `001-020` 是给人看的计划值，运行时以章节文件实况为准。
@@ -41,6 +41,12 @@
   - `suspense` 具体悬念：本章悬念与章尾钩子的问题化表述（必须是「读者会问出的问题」，不是「作者知道的事实」）。
   - `interpersonal_tension` 人际张力：本章人物关系中的压力与变化（谁与谁的矛盾升温/缓和/变质）。
 - 五维字段在大纲阶段（outline 角色）写定、写作阶段（write 角色）覆盖、审校阶段（review 角色）对照——三处都用同一组键，这就是「按大纲写」的可检查形态。
+- 可选 `writer` 键（co-write 用）：`author | ai`，记本章正文归谁写；缺省按 project.yml 的 `mode` 推——`author-draft` 下整本按 author、`ai-draft` 下整本按 ai。键只做记录与面板展示，状态机仍看 `status`。
+
+### outlines/vXX-cXXX.md
+章纲：共创模式（`co-write` / `author-draft`）下大纲师给作者的创作输入，与章节文件一一对应（`outlines/v01-c005.md` ↔ `chapters/v01-c005.md`）。**纯 markdown、无 frontmatter**——作者会在任意编辑器里打开它，`---` 围栏只会碍眼（第 1 节「frontmatter 用围栏」的总约束不适用本目录）。五件内容写全：本章目标、节拍（场景推进顺序与情绪起伏）、出场角色（谁上场、各带什么目的）、需埋/需收伏笔（对照 foreshadows.yml 报 id）、与前章接口（从哪个钩子接、结尾钩到哪）。颗粒度标准：作者拿着就能动笔，不写「参见大纲」式的空转。
+
+约定：章纲是计划不是章节事实，**不入 index.yml**（index 只索引章节实况），面板与 `maoying brief` 现查现拼。谁写谁读：大纲师写，作者读，review 收稿时对照评偏离——作者没照章纲写不算错，偏离如实报给主编裁决，账本永远跟正文走。
 
 ### characters/<slug>.md
 `role` 四态 `protagonist|antagonist|supporting|minor`。`markers`（辨识标记）是审校盯人设的抓手：口癖、习惯动作、禁忌。角色卡一经 `accepted` 章节引用，改动须过主编（写手发现需要新设定时上报，不得自行改卡）。
@@ -69,7 +75,8 @@ planted ──→ progressing ──→ resolved
 - `abandoned` 弃用：明确决定不回收（不是遗忘）——`notes` 里写弃用原因；被遗忘的伏笔不走 abandoned，由 consistency 阶段的审校捞出、主编决定补收或弃用；
 - 转移只按上图的边走；`resolved`/`abandoned` 是终态，回退（如 resolved 又翻案）须主编操作并在 `notes` 记一行；
 - `expected_resolve` 是排期承诺：写作推进到预期章节附近仍未回收时，主编须向用户报告并决定顺延或弃用；
-- 活跃伏笔（planted + progressing）超过 15 条时主编主动提醒清理——账本膨胀是长篇烂尾的第一征兆。
+- 活跃伏笔（planted + progressing）超过 15 条时主编主动提醒清理——账本膨胀是长篇烂尾的第一征兆；
+- 可选 `source` 键：`plan | backfill`，缺省 `plan`。`plan` 是章纲/大纲阶段计划登记的伏笔；`backfill` 是共创收稿时 lore 从作者正文里回填认领的——作者正文偏离章纲是常态，账本必须跟正文走，实际发生了计划外的埋设/回收就补登并标 `backfill`，面板据此挂「回填」徽章区分计划内与回填。
 
 ### timeline.yml
 记故事内时间（`year` 用故事内纪年），不是写作顺序；`chapter` 把事件锚回正文。审校的「时间线一致性」扫描就是对照本表与章节正文。
@@ -87,6 +94,13 @@ planted ──→ progressing ──→ resolved
 
 ### research/ 与 exports/
 `research/<topic>.md` 由素材调研员（research 角色）独占写入；frontmatter 记 `topic` 与 `sources`（URL 列表），body 是可直接用于写作的结论要点，区分史实/通说/演义并逐条附来源。`exports/` 一期只建目录，导出能力在二期。
+
+### 作者稿圣域（共创模式）
+`chapters/` 目录的正文唯作者可改。author-draft / co-write 的 author 章节上，agent（主编与帮手）只可更新 frontmatter 的 `summary` 与五维字段，且以建议为先、动笔前说明；review 一律只出意见清单不改稿。`ai-draft` 章节不受此限，write 照旧。
+
+收稿循环（author-draft / co-write 的 author 章）：作者交稿 → review 出意见清单 → lore 按正文回填五本账（foreshadows / timeline / relations / memories / clue-board）并重建 index.yml → 主编向作者汇报本章伏笔/时间线/关系变动 → 大纲师出下一章章纲。
+
+使用约定：`novel/` 建议纳入 git——账本变动看 diff，lore 回填动了哪条一目了然；作者对某笔回填不认可，`git checkout` 对应文件即是回滚。
 
 ## 3. index.yml（派生）
 

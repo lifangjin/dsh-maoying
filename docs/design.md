@@ -169,4 +169,38 @@ persona prefix 内容骨架（agent.cordis.yml 内联，中文书写）：
 - ✅ **技能包（黄金三章/爽点节奏/审校清单/伏笔管理）**——已做：skills/ 四目录随包分发，安装器复制到 `<home>/skills/maoying-*`（逐字节比较幂等 + .installed-version 标记，见 index.mjs installSkills）。
 - ✅ **导出（MD/TXT/EPUB）**——已做：`maoying export [dir] --format md|txt|epub [--out <目录>]`；EPUB 由 lib/epub.mjs 零依赖打包（手写 stored zip + CRC32 表格法，EPUB 3 最小合法结构）。
 - ✅ **0.2.1-rc.2+ AgentPreset 形态适配**——已做：presets/maoying/agent.cordis.v2.yml（主编 + 5 角色 preset 的 v2 组合源）+ index.mjs composeManagedRows 按宿主版本双形态切换（v1 内联 / v2 AgentPreset，宿主升降级重启即整块换形状；防漂移由 test/composition.test.mjs 逐字节断言，见 README「兼容面」）。
-- ⬜ Web 创作台面板（照 paoding-config-ui：/api/maoying/* + 左侧栏入口）（未做）。
+- ✅ **Web 创作台面板**——已做（0.3.0）：/api/maoying/* 八条路由 + 左侧栏入口 + 会话中栏全页面板，八视图（概览/章节/角色/伏笔看板/关系图/时间线/设定/索引板）；设计与契约见 docs/creator-panel.md。
+
+## 9. 五期：共创模式（作者亲笔稿）
+
+定位：作者自己写正文，毛颖从「代笔」转「备料 + 审稿 + 记账」。P0 改流程与规范，P1 补工具。
+
+### 9.1 模式开关
+
+project.yml 加 `mode` 字段：`ai-draft`（默认，现状）/ `co-write`（逐章指派谁写）/ `author-draft`（全书作者写）。章节 frontmatter 可选 `writer: author | ai`（co-write 下用；缺省按 mode 推）。
+
+### 9.2 主编共创流程（author-draft / co-write 的 author 章）
+
+- **永不代写**：主编不产出章节正文，不委派 write 写 author 章；
+- 循环：大纲师出下一章章纲 → 作者自写 → 作者交稿（贴文或说「第 X 章写完了」）→ 主编收稿：review 意见清单 + lore 账本回填 + 重建 index.yml + 汇报本章伏笔/时间线变动 → 出再下一章章纲；
+- co-write 下主编动笔前必须问清本章归谁；author-draft 下 write 角色闲置是正常态。
+
+### 9.3 章纲 outlines/
+
+`novel/outlines/vXX-cXXX.md`，**纯 markdown 无 frontmatter**（作者编辑器里打开不碍眼）：本章目标、节拍、出场角色、需埋/需收伏笔、与前章接口。大纲师产物、作者创作输入、review 收稿时的对照基准。不入 index.yml，面板与 brief 现查现拼。
+
+### 9.4 账本回填（lore 收稿流程）
+
+作者正文偏离章纲是常态，账本必须跟正文走：lore 读新稿 → 提取**实际发生**的伏笔埋设/回收、时间线事件、新关系、承诺线、线索 → 更新五本账；foreshadows.yml 条目加可选 `source: plan | backfill`（缺省 plan，回填的标 backfill）。使用约定：novel/ 纳 git，账本变动看 diff。
+
+### 9.5 作者稿圣域（全部模式生效）
+
+- `chapters/` 正文唯作者可改；agent 在 author-draft / co-write 的 author 章上只许动 frontmatter 的 summary / 五维字段，且以建议为先；
+- review 输出意见清单，不改稿（工具面本就只读，人设立规矩）；
+- ai-draft 章节不受此限（write 照旧）。
+
+### 9.6 P1 工具
+
+- `maoying brief <dir> <章号>` 写作卡：章纲 + 前章结尾约 1500 字 + 出场角色卡 + 活跃伏笔节选，打成一个 md（stdout 或 --out）。给作者带去任意编辑器/其他 AI；
+- `maoying check <dir>` 静态体检（**不调模型**——LLM 审校走主编）：frontmatter 完整性、五维缺键、状态枚举、章号/卷号规范、伏笔章号引用存在性、时间线年份乱序、角色卡悬空引用；
+- 面板三件：章节抽屉加章纲对照栏 + 复制文件路径按钮；伏笔看板卡上 `source: backfill` 显示「回填」徽章；章节 tab 顶部「按单写作」区块（有章纲且 status=pending 的章，按序列章纲节选）。

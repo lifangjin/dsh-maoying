@@ -149,6 +149,8 @@ test('state：契约字段就位（root/novelDir/found/project/totals/warnings�
   assert.equal(snap.project.title, '雪葬长夜')
   assert.equal(snap.chapters.length, 2)
   assert.ok(snap.chapters[0].cognitive_frame !== undefined)
+  // outlines（五期）：夹具两份章纲按卷-章号升序，孤儿章纲（v01-c003）照列
+  assert.deepEqual(snap.outlines.map((o) => o.file), ['v01-c001.md', 'v01-c003.md'])
   assert.deepEqual(snap.totals.byStatus, { pending: 0, writing: 1, review: 0, accepted: 1 })
   assert.ok(snap.warnings.some((w) => w.includes('characters/broken.md')))
   assert.ok(!Number.isNaN(Date.parse(snap.generatedAt)))
@@ -177,6 +179,18 @@ test('chapter：返回 frontmatter 对象与正文全文', async () => {
   assert.equal(payload.file, 'v01-c001.md')
   assert.equal(payload.frontmatter.title, '雪夜来客')
   assert.ok(payload.body.startsWith('雪下了三天'))
+  // outline（五期，§2 契约 { ok, file, frontmatter, body, outline }）：
+  // 有章纲 → { file, words, body }；无章纲 → null
+  assert.ok(payload.outline, 'chapter 响应应带 outline 字段')
+  assert.equal(payload.outline.file, 'v01-c001.md')
+  assert.ok(payload.outline.words > 0)
+  assert.ok(payload.outline.body.includes('章纲'))
+  const bare = await call(handler, {
+    url: `/api/maoying/chapter?path=${encodeURIComponent(env.root)}&file=${encodeURIComponent('v01-c002.md')}`,
+    headers: LOOPBACK,
+  })
+  assert.equal(bare.status, 200)
+  assert.equal(JSON.parse(bare.raw).outline, null)
   const traversal = await call(handler, {
     url: `/api/maoying/chapter?path=${encodeURIComponent(env.root)}&file=${encodeURIComponent('../project.yml')}`,
     headers: LOOPBACK,
