@@ -51,7 +51,8 @@
  *   限额 JSON 读体、client.css 现读下发。
  */
 
-import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { closeSync, copyFileSync, existsSync, mkdirSync, openSync, readdirSync, readFileSync, readSync, rmSync, writeFileSync } from 'node:fs'
+import { createHash } from 'node:crypto'
 import { readFile } from 'node:fs/promises'
 import { createRequire } from 'node:module'
 import os from 'node:os'
@@ -197,6 +198,53 @@ export function hostRejectsInlineDelegation(version) {
 }
 
 /** 宿主包版本：从 <home>/node_modules require('@deepseek-ai/dsh/package.json')。 */
+/**
+ * 裸读 asar 内文件（零依赖，不依赖 Electron 的 asar fs 补丁）。asar 格式：
+ * 头部 [0..4]=pickle 定长、[12..16]=头 JSON 字节数，头 JSON 是文件树（每个
+ * 文件带 offset/size），文件区从 16+jsonSize 起按 offset 裸存。桌面应用的
+ * 运行时进程里 existsSync(asar 内路径) 行为不可靠（实测探针轨迹：existsSync
+ * 为真但 readFileSync 拿不到内容），按字节切是唯一确定性读法。
+ * @returns {object|null} 解析后的 JSON；任何一步失败返回 null
+ */
+function asarReadJson(asarPath, innerPath) {
+  let fd = null
+  try {
+    fd = openSync(asarPath, 'r')
+    const head = Buffer.alloc(16)
+    if (readSync(fd, head, 0, 16, 0) !== 16) return null
+    const jsonSize = head.readUInt32LE(12)
+    const header = Buffer.alloc(jsonSize)
+    if (readSync(fd, header, 0, jsonSize, 16) !== jsonSize) return null
+    let node = JSON.parse(header.toString('utf8'))
+    for (const seg of innerPath.split('/')) {
+      node = node?.files?.[seg]
+      if (!node) return null
+    }
+    if (node.files || typeof node.offset !== 'string' || typeof node.size !== 'number') return null
+    // 桌面壳的 asar 文件区带块对齐位移（实测 +2 字节），头里的 integrity.hash
+    // （文件 SHA256）就是权威标尺：读一带余量窗口，滑窗找到哈希命中的精确切片。
+    const size = node.size
+    const want = typeof node.integrity?.hash === 'string' ? node.integrity.hash : null
+    const slack = 64
+    const win = Buffer.alloc(size + 2 * slack)
+    const base = 16 + jsonSize
+    const at = base + Number(node.offset) - slack
+    if (readSync(fd, win, 0, win.length, at) !== win.length) return null
+    for (let off = 0; off + size <= win.length; off++) {
+      if (win[off] !== 0x7b) continue // JSON 必以 { 开头，先粗筛再哈希
+      if (want !== null && createHash('sha256').update(win.subarray(off, off + size)).digest('hex') !== want) continue
+      try {
+        return JSON.parse(win.toString('utf8', off, off + size))
+      } catch { /* 哈希没配或解析失败继续滑 */ }
+    }
+    return null
+  } catch {
+    return null
+  } finally {
+    if (fd !== null) { try { closeSync(fd) } catch { /* 关闭失败无所谓 */ } }
+  }
+}
+
 /** 从 start 向上最多 8 层找最近的 @deepseek-ai/dsh package.json，命中记轨迹 */
 function anchorVersion(start, probe, trace) {
   let dir = path.dirname(path.resolve(start))
@@ -245,30 +293,52 @@ function collectHostVersion(dshHome, trace) {
     if (hit) return hit
   }
   if (scanned === 0) trace.push({ probe: 'argv-scan', hit: null, note: '无可锚定的 argv 项' })
-  // ③ app.asar 锚定（仅 Electron 进程内有意义；纯 Node 的 fs 读不了 asar）
+  // ③ app.asar 裸读锚定（桌面应用的确定性读法，见 asarReadJson 说明）
   if (process.versions?.electron) {
     const execDir = path.dirname(process.execPath)
-    const candidates = [
-      path.resolve(execDir, '..', 'Resources', 'app.asar', 'dsh', 'package.json'),
-      path.resolve(execDir, 'resources', 'app.asar', 'dsh', 'package.json'),
-      path.resolve(execDir, '..', 'Resources', 'app.asar', 'package.json'),
-      path.resolve(execDir, 'resources', 'app.asar', 'package.json'),
+    const asarPaths = [
+      path.resolve(execDir, '..', 'Resources', 'app.asar'),
+      path.resolve(execDir, 'resources', 'app.asar'),
     ]
-    let probed = false
-    for (const pkgPath of candidates) {
-      try {
-        if (!existsSync(pkgPath)) continue
-        probed = true
-        const pkg = JSON.parse(readFileSync(pkgPath, 'utf8'))
-        if (pkg?.name === '@deepseek-ai/dsh' && typeof pkg.version === 'string' && pkg.version !== '') {
-          trace.push({ probe: 'asar', hit: pkg.version, via: pkgPath })
+    let sawAsar = false
+    for (const asarPath of asarPaths) {
+      if (!existsSync(asarPath)) continue
+      sawAsar = true
+      for (const inner of ['dsh/package.json', 'package.json']) {
+        const pkg = asarReadJson(asarPath, inner)
+        // 桌面壳内置 dsh 的包名是 @deepseek-ai/dsh-desktop-runtime（实测），CLI
+        // 源码包叫 @deepseek-ai/dsh——两者都算命中。
+        const okName = pkg?.name === '@deepseek-ai/dsh' || pkg?.name === '@deepseek-ai/dsh-desktop-runtime'
+        if (okName && typeof pkg.version === 'string' && pkg.version !== '') {
+          trace.push({ probe: 'asar', hit: pkg.version, via: `${asarPath}!${inner}` })
           return pkg.version
         }
-      } catch { /* 单个候选坏掉换下一个 */ }
+      }
     }
-    if (!probed) trace.push({ probe: 'asar', hit: null, note: 'execPath 反推的 asar 路径均不可读' })
+    trace.push({ probe: 'asar', hit: null, note: sawAsar ? 'asar 存在但未读到 @deepseek-ai/dsh' : 'asar 路径不存在' })
   } else {
     trace.push({ probe: 'asar', hit: null, note: '非 Electron 进程' })
+  }
+  // ③′ 桌面运行时 payload 版本：primary-runtime/runtime.json 的 desktopVersion
+  //     （真实文件系统，任何上下文可读；比 asar 略弱——payload 可能落后应用壳）
+  {
+    const execDir = path.dirname(process.execPath)
+    const runtimeJsons = (process.argv ?? [])
+      .filter((a) => typeof a === 'string' && a !== '' && !a.startsWith('-'))
+      .map((a) => path.join(a, 'runtime.json'))
+    runtimeJsons.push(path.resolve(execDir, '..', 'Resources', 'runtime', 'primary-runtime', 'runtime.json'))
+    for (const rj of runtimeJsons) {
+      try {
+        if (!existsSync(rj)) continue
+        const meta = JSON.parse(readFileSync(rj, 'utf8'))
+        const v = meta?.desktopVersion
+        if (typeof v === 'string' && v !== '') {
+          trace.push({ probe: 'desktop-runtime', hit: v, via: rj })
+          return v
+        }
+      } catch { /* 单个坏文件换下一个 */ }
+    }
+    trace.push({ probe: 'desktop-runtime', hit: null })
   }
   // ④ Electron app.getVersion()。纯 Node 下 require('electron') 得到路径字符串
   //    或直接找不到，类型守卫天然挡掉。
