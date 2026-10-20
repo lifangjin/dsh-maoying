@@ -221,6 +221,25 @@ test('asarReadJson（经 readHostVersion 的 asar 探针）：块对齐位移的
   }
 })
 
+test('composeManagedRows：v2 本地插件名换 file:// 绝对地址，tool-todo 带 allowParallelInProgress', () => {
+  const home = makeFakeHome({ hostVersion: '0.2.1-rc.2' })
+  const composed = composeManagedRows(home, console)
+  assert.ok(Array.isArray(composed.rows))
+  const names = []
+  for (const row of composed.rows) {
+    for (const p of row?.config?.plugins ?? []) {
+      names.push(String(p?.name))
+      if (p?.id === 'tool-todo') {
+        assert.equal(p.config?.allowParallelInProgress, true, `${row.config?.id} 的 tool-todo 缺 allowParallelInProgress`)
+      }
+    }
+  }
+  for (const n of names) {
+    assert.ok(!n.startsWith('./'), `本地插件名仍是相对路径: ${n}`)
+  }
+  assert.ok(names.some((n) => n.startsWith('file://') && n.includes('restrict.mjs')), 'restrict.mjs 应为 file:// 地址')
+})
+
 test('hostRejectsInlineDelegation 边界：0.2.1-rc.2 起为真，rc.1 与正式版 0.2.1 前为假', () => {
   assert.equal(hostRejectsInlineDelegation('0.2.0-rc.2'), false)
   assert.equal(hostRejectsInlineDelegation('0.2.1-rc.1'), false)

@@ -393,6 +393,8 @@
             name: "@deepseek-ai/dsh-tool-ask-user"
           - id: tool-todo
             name: "@deepseek-ai/dsh-tool-todo"
+            config:
+              allowParallelInProgress: true
     # ── 角色 preset：设定管理员（continuable）─────────────────────────────────
     # persona 逐字复制 v1 delegation-lore；工具面同大纲师。
     - id: preset-maoying-lore
@@ -491,3 +493,5 @@
             name: "@deepseek-ai/dsh-tool-ask-user"
           - id: tool-todo
             name: "@deepseek-ai/dsh-tool-todo"
+            config:
+              allowParallelInProgress: true

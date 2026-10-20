@@ -53,6 +53,7 @@
 
 import { closeSync, copyFileSync, existsSync, mkdirSync, openSync, readdirSync, readFileSync, readSync, rmSync, writeFileSync } from 'node:fs'
 import { createHash } from 'node:crypto'
+import { pathToFileURL } from 'node:url'
 import { readFile } from 'node:fs/promises'
 import { createRequire } from 'node:module'
 import os from 'node:os'
@@ -459,6 +460,24 @@ export function parsePresetRows(yaml, agentCordisV2Text) {
  * reason 区分 'yaml-unavailable' / 'compose-failed'），由调用方走既有的「只落
  * 文件、跳过声明行并 warn、下次自愈」分支。
  */
+/**
+ * preset 声明行里的本地插件名换成 file:// 绝对地址。相对名按「声明方 baseUrl」
+ * 解析——home 托管块的声明基座在宿主 asar 内部，'./x.mjs' 在桌面应用里永远
+ * 落空（注册表审计报 never started，0.1.8 host-debug 实测坐实）。Node ESM 对
+ * file:// URL 是合法模块说明符，指向 <home>/.agent-presets/maoying/ 安装副本
+ * （真实文件系统，任何进程可读）。
+ */
+function absolutizeLocalPluginNames(rows, presetDir) {
+  for (const row of rows ?? []) {
+    for (const p of row?.config?.plugins ?? []) {
+      if (typeof p?.name === 'string' && p.name.startsWith('./')) {
+        p.name = pathToFileURL(path.join(presetDir, p.name.slice(2))).href
+      }
+    }
+  }
+  return rows
+}
+
 export function composeManagedRows(home, logger = console) {
   const hostVersion = readHostVersion(home)
   const useV2 = hostVersion !== null && hostRejectsInlineDelegation(hostVersion)
@@ -466,16 +485,17 @@ export function composeManagedRows(home, logger = console) {
   const yaml = loadYamlLib(home)
   if (!yaml) return { shape, rows: null, hostVersion, yaml: null, reason: 'yaml-unavailable' }
   try {
+    const installedDir = path.join(home, '.agent-presets', PRESET_ID)
     if (useV2) {
       const text = readFileSync(path.join(PLUGIN_ROOT, 'presets', PRESET_ID, AGENT_CORDIS_V2_FILE), 'utf8')
-      return { shape, rows: parsePresetRows(yaml, text), hostVersion, yaml, reason: null }
+      return { shape, rows: absolutizeLocalPluginNames(parsePresetRows(yaml, text), installedDir), hostVersion, yaml, reason: null }
     }
     const sourceDir = path.join(PLUGIN_ROOT, 'presets', PRESET_ID)
     const meta = parsePresetMeta(yaml, readFileSync(path.join(sourceDir, 'preset.yml'), 'utf8'))
     const plugins = parseAgentPlugins(yaml, readFileSync(path.join(sourceDir, 'agent.cordis.yml'), 'utf8'))
     // rows 统一为 insert 列表（stringifyManagedBlock 据此渲染同一 - insert: 结构；
     // 与 v1 历史产物逐字节同形，老 home 升级零抖动）
-    return { shape, rows: buildPresetRow({ meta, plugins }).insert, hostVersion, yaml, reason: null }
+    return { shape, rows: absolutizeLocalPluginNames(buildPresetRow({ meta, plugins }).insert, installedDir), hostVersion, yaml, reason: null }
   } catch (err) {
     logger.warn?.(`maoying-installer: 组合源解析失败（${shape} 形态，已跳过声明行）: ${err?.message ?? err}`)
     return { shape, rows: null, hostVersion, yaml, reason: 'compose-failed' }
