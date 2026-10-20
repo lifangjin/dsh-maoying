@@ -197,40 +197,115 @@ export function hostRejectsInlineDelegation(version) {
 }
 
 /** 宿主包版本：从 <home>/node_modules require('@deepseek-ai/dsh/package.json')。 */
-export function readHostVersion(dshHome) {
-  // ① 运行入口锚定（最真）：argv[1] 是宿主自己的入口脚本——CLI 下是
-  //    @deepseek-ai/dsh 包里的 bin/入口，桌面应用下是 app.asar/dsh 内的入口
-  //    （Electron 主进程的 fs 能透读 asar）。向上找最近的 @deepseek-ai/dsh
-  //    package.json，读到的就是当前进程真实版本。home 全局安装的版本可能
-  //    陈旧（例如 CLI 升级前留下的 rc.7），绝不能只信它。
-  try {
-    let dir = path.dirname(path.resolve(process.argv?.[1] ?? ''))
-    for (let i = 0; i < 8 && dir && dir !== path.dirname(dir); i++, dir = path.dirname(dir)) {
-      const pkgPath = path.join(dir, 'package.json')
-      if (!existsSync(pkgPath)) continue
+/** 从 start 向上最多 8 层找最近的 @deepseek-ai/dsh package.json，命中记轨迹 */
+function anchorVersion(start, probe, trace) {
+  let dir = path.dirname(path.resolve(start))
+  for (let i = 0; i < 8 && dir && dir !== path.dirname(dir); i++, dir = path.dirname(dir)) {
+    const pkgPath = path.join(dir, 'package.json')
+    if (!existsSync(pkgPath)) continue
+    try {
       const pkg = JSON.parse(readFileSync(pkgPath, 'utf8'))
       if (pkg?.name === '@deepseek-ai/dsh' && typeof pkg.version === 'string' && pkg.version !== '') {
+        trace.push({ probe, hit: pkg.version, via: pkgPath })
         return pkg.version
       }
+    } catch { /* 单个坏 package.json 跳过继续走 */ }
+  }
+  trace.push({ probe, hit: null })
+  return null
+}
+
+/**
+ * 宿主版本探测（带轨迹）。五级优先，前四级都锚定「当前进程的真实宿主」，
+ * home 全局那份（老 CLI 残留，版本可能差几个大版本）只做最后兜底：
+ *   ① argv[1]——CLI 下就是 @deepseek-ai/dsh 包内入口；
+ *   ② 全 argv 扫描——Electron 主进程常见 argv 里带 app 入口或 .asar 路径；
+ *   ③ app.asar 锚定——桌面应用 execPath 反推 Resources/app.asar/dsh（Electron
+ *      主进程 fs 可透读 asar）；
+ *   ④ Electron app.getVersion()——桌面应用版本即其内置 dsh 版本；
+ *   ⑤ home 全局安装兜底。
+ * 轨迹经 trace 数组透出（host-debug 路由用），方便现场诊断每级看到了什么。
+ */
+function collectHostVersion(dshHome, trace) {
+  // ① argv[1]
+  const argv1 = process.argv?.[1]
+  if (typeof argv1 === 'string' && argv1 !== '') {
+    const hit = anchorVersion(argv1, 'argv[1]', trace)
+    if (hit) return hit
+  } else {
+    trace.push({ probe: 'argv[1]', hit: null, note: 'argv[1] 缺席' })
+  }
+  // ② 全 argv 扫描
+  let scanned = 0
+  for (const arg of process.argv ?? []) {
+    if (typeof arg !== 'string' || arg === argv1 || arg.startsWith('-')) continue
+    if (!/\.asar($|\/)|\.(mjs|cjs|js)$/.test(arg)) continue
+    scanned++
+    const hit = anchorVersion(arg, 'argv-scan', trace)
+    if (hit) return hit
+  }
+  if (scanned === 0) trace.push({ probe: 'argv-scan', hit: null, note: '无可锚定的 argv 项' })
+  // ③ app.asar 锚定（仅 Electron 进程内有意义；纯 Node 的 fs 读不了 asar）
+  if (process.versions?.electron) {
+    const execDir = path.dirname(process.execPath)
+    const candidates = [
+      path.resolve(execDir, '..', 'Resources', 'app.asar', 'dsh', 'package.json'),
+      path.resolve(execDir, 'resources', 'app.asar', 'dsh', 'package.json'),
+      path.resolve(execDir, '..', 'Resources', 'app.asar', 'package.json'),
+      path.resolve(execDir, 'resources', 'app.asar', 'package.json'),
+    ]
+    let probed = false
+    for (const pkgPath of candidates) {
+      try {
+        if (!existsSync(pkgPath)) continue
+        probed = true
+        const pkg = JSON.parse(readFileSync(pkgPath, 'utf8'))
+        if (pkg?.name === '@deepseek-ai/dsh' && typeof pkg.version === 'string' && pkg.version !== '') {
+          trace.push({ probe: 'asar', hit: pkg.version, via: pkgPath })
+          return pkg.version
+        }
+      } catch { /* 单个候选坏掉换下一个 */ }
     }
-  } catch { /* 入口缺失或不可读时落下一档 */ }
-  // ② Electron 主进程：桌面应用版本即其内置 dsh 的版本。纯 Node 下 require
-  //    ('electron') 得到的是路径字符串（或直接找不到），类型守卫天然挡掉。
+    if (!probed) trace.push({ probe: 'asar', hit: null, note: 'execPath 反推的 asar 路径均不可读' })
+  } else {
+    trace.push({ probe: 'asar', hit: null, note: '非 Electron 进程' })
+  }
+  // ④ Electron app.getVersion()。纯 Node 下 require('electron') 得到路径字符串
+  //    或直接找不到，类型守卫天然挡掉。
   try {
     const electron = createRequire(import.meta.url)('electron')
     if (electron && typeof electron === 'object' && typeof electron.app?.getVersion === 'function') {
       const v = electron.app.getVersion()
-      if (typeof v === 'string' && v !== '') return v
+      const hit = typeof v === 'string' && v !== '' ? v : null
+      trace.push({ probe: 'electron-api', hit })
+      if (hit) return hit
+    } else {
+      trace.push({ probe: 'electron-api', hit: null, note: 'require 结果非 API 对象' })
     }
-  } catch { /* 非 Electron 环境常态 */ }
-  // ③ 兜底：home 全局安装（老 CLI 链路；可能陈旧，只在①②都拿不到时兜底）
+  } catch {
+    trace.push({ probe: 'electron-api', hit: null, note: 'require 失败' })
+  }
+  // ⑤ home 全局兜底
   try {
     const req = createRequire(path.join(dshHome, 'node_modules', 'package.json'))
     const pkg = req('@deepseek-ai/dsh/package.json')
-    return typeof pkg?.version === 'string' && pkg.version !== '' ? pkg.version : null
+    const hit = typeof pkg?.version === 'string' && pkg.version !== '' ? pkg.version : null
+    trace.push({ probe: 'home-global', hit, note: hit ? '兜底命中——home 全局版本可能陈旧' : null })
+    return hit
   } catch {
+    trace.push({ probe: 'home-global', hit: null })
     return null
   }
+}
+
+export function readHostVersion(dshHome) {
+  return collectHostVersion(dshHome, [])
+}
+
+/** host-debug 路由用：版本 + 每级探针轨迹 */
+export function readHostVersionDebug(dshHome) {
+  const trace = []
+  return { version: collectHostVersion(dshHome, trace), trace }
 }
 
 // ── 预设源解析 ──────────────────────────────────────────────────────────────
@@ -663,6 +738,29 @@ export async function registerCreatorRoutes(ctx) {
             ctx.logger?.warn?.('maoying 创作台: client.css 读取失败: ' + String(err?.message ?? err))
             json(res, 500, { ok: false, error: sanitizeMessage(`client.css 不可用: ${err?.message ?? err}`) })
           }
+          return
+        }
+
+        if (route === 'host-debug' && req.method === 'GET') {
+          // 现场诊断：宿主版本五级探针轨迹 + 形状判定。与 client.css 同级信任
+          // 围栏（loopback + 可信 Host 才放行），只暴露版本与路径类信息。
+          const home = resolveDshHome()
+          const dbg = readHostVersionDebug(home)
+          let shape = null
+          try { shape = composeManagedRows(home, ctx.logger).shape } catch { /* 诊断信息尽力而为 */ }
+          json(res, 200, {
+            ok: true,
+            hostVersion: dbg.version,
+            trace: dbg.trace,
+            shape,
+            runtime: {
+              argv: process.argv,
+              execPath: process.execPath,
+              cwd: process.cwd(),
+              electron: process.versions?.electron ?? null,
+              node: process.version,
+            },
+          })
           return
         }
 
