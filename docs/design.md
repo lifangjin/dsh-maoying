@@ -54,7 +54,7 @@ dsh-maoying/
      ```
 
    - 全程幂等：标记块已存在且版本一致则跳过；不一致则整块替换。YAML 解析/序列化用 `yaml` npm 包（dependencies 声明）。
-   - 宿主版本 ≥0.2.1-rc.2 时 logger.warn 提示（内联 persona/toolFilter 委派行形态自 0.2.1-rc.2 起被 dsh-tool-subagent 拒绝；支持面见 §6）。
+   - 按宿主版本自动选委派行形状（0.4.0 起）：≥0.2.1-rc.2 写 v2 AgentPreset 六行块（agent.cordis.v2.yml），否则写 v1 内联单行块；宿主升降级重启即整块切换，不再需要任何降级提示（形态依据见 §8，支持面见 §6）。
 3. 卸载 `dsh plugin remove dsh-maoying` 后：bundle 行消失，托管块与 .agent-presets/maoying/ 需手动删（README 写明两条 rm 命令；与 paoding 一致）。
 
 ## 2. mythpen 功能映射（一期范围裁决）
@@ -154,7 +154,7 @@ persona prefix 内容骨架（agent.cordis.yml 内联，中文书写）：
 ## 6. 兼容面
 
 - 支持：DSH 0.1.7 – 0.2.1-rc.1（patch 声明行 + 内联委派行形状）。
-- 0.2.1-rc.2+：dsh-tool-subagent 拒内联 persona/toolFilter，须换代为 AgentPreset 形态——二期适配（照 paoding 0.2.1 生成路径）。
+- 0.2.1-rc.2+：dsh-tool-subagent 拒内联 persona/toolFilter——**已适配**（0.4.0 起）：安装器按宿主版本自动切换 v1 内联 / v2 AgentPreset 形状，见 §8 与 README「兼容面」。
 - ≤0.1.6 目录扫描轨道：不做（已淘汰）。
 - 当前开发宿主：0.2.0-rc.2（内联形状 OK）。
 
@@ -169,5 +169,5 @@ persona prefix 内容骨架（agent.cordis.yml 内联，中文书写）：
 
 - ✅ **技能包（黄金三章/爽点节奏/审校清单/伏笔管理）**——已做：skills/ 四目录随包分发，安装器复制到 `<home>/skills/maoying-*`（逐字节比较幂等 + .installed-version 标记，见 index.mjs installSkills）。
 - ✅ **导出（MD/TXT/EPUB）**——已做：`maoying export [dir] --format md|txt|epub [--out <目录>]`；EPUB 由 lib/epub.mjs 零依赖打包（手写 stored zip + CRC32 表格法，EPUB 3 最小合法结构）。
-- ⬜ 0.2.1-rc.2+ AgentPreset 形态适配（未做）。
+- ✅ **0.2.1-rc.2+ AgentPreset 形态适配**——已做：presets/maoying/agent.cordis.v2.yml（主编 + 5 角色 preset 的 v2 组合源）+ index.mjs composeManagedRows 按宿主版本双形态切换（v1 内联 / v2 AgentPreset，宿主升降级重启即整块换形状；防漂移由 test/composition.test.mjs 逐字节断言，见 README「兼容面」）。
 - ⬜ Web 创作台面板（照 paoding-config-ui：/api/maoying/* + 左侧栏入口）（未做）。

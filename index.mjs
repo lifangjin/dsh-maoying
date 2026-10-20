@@ -16,7 +16,7 @@
  *      ——同样逐字节比较、一致不写，每个技能目录落 .installed-version 标记；
  *      只碰 maoying-* 前缀目录，用户自己的技能一个字节都不动；
  *   4) 在 <home>/cordis.patch.yml 维护托管块（起止标记见 MANAGED_BEGIN /
- *      MANAGED_END），块内是一条 dsh-agent-preset 声明行——preset.yml 的
+ *      MANAGED_END），块内是 dsh-agent-preset 声明行——preset.yml 的
  *      name/description/order 与 agent.cordis.yml 解析出的完整 plugins 数组
  *      全部内联。DSH 0.1.7 起宿主靠这条声明行发现预设；不写它，预设选择器里
  *      就不会出现「毛颖创作 (Maoying)」。
@@ -27,18 +27,20 @@
  *   层）。内容比对是版本比对之外的兜底：开发检出（link 安装）改了预设源而没
  *   改版本号时，重启照样换新，不会带着旧组合过夜。
  *
- * YAML：解析与序列化都从 <home>/node_modules 惰性加载 yaml 包（dsh 自带 v2，
- *   本包零 npm 依赖）。agent.cordis.yml 解析前先中和 `!!js` 表达式——本仓库
- *   只有 process.platform 两处（tool-bash / tool-pwsh 的 disabled），直接
- *   replaceAll 成 true/false。yaml 包不可用时：序列化回退为整段 JSON 单行
- *   （YAML 1.2 是 JSON 超集，合法）并 warn；解析没有可靠回退（plugins 数组
- *   结构深，手写子集解析器得不偿失），此时只落预设文件、跳过声明行并 warn
- *   ——下次宿主启动（yaml 可用）自动补写，自愈。
+ * 形态选择（双形状）：生成内容 = f(宿主版本, 插件版本)。宿主 ≤ 0.2.1-rc.1 用
+ *   v1 内联形状（agent.cordis.yml，1 条声明行，委派行内联 persona/toolFilter）；
+ *   ≥ 0.2.1-rc.2 用 v2 AgentPreset 形状（agent.cordis.v2.yml，6 条声明行——
+ *   主编 preset + 5 张角色 preset，委派行以 agentPreset 指向角色 preset，该版
+ *   本起 dsh-tool-subagent 拒绝内联形状）。宿主升降级后重启即整块切换，无需
+ *   重装插件（见 composeManagedRows）。
  *
- * 宿主版本检查：从 <home>/node_modules require('@deepseek-ai/dsh/package.json')
- *   取宿主版本，≥ 0.2.1-rc.2 时 warn 一条——该版本起 dsh-tool-subagent 拒绝
- *   内联 persona/toolFilter 形状的委派行（见 README「兼容面」）。semver 比较手
- *   写（major.minor.patch-rc.N），零依赖。
+ * YAML：解析与序列化都从 <home>/node_modules 惰性加载 yaml 包（dsh 自带 v2，
+ *   本包零 npm 依赖）。agent.cordis.yml / agent.cordis.v2.yml 解析前先中和
+ *   `!!js` 表达式——两个文件都只有 process.platform 两种（tool-bash /
+ *   tool-pwsh 的 disabled），直接 replaceAll 成 true/false。yaml 包不可用时：
+ *   序列化回退为整段 JSON 单行（YAML 1.2 是 JSON 超集，合法）并 warn；解析没
+ *   有可靠回退（plugins 数组结构深，手写子集解析器得不偿失），此时只落预设
+ *   文件、跳过声明行并 warn——下次宿主启动（yaml 可用）自动补写，自愈。
  *
  * 失败面：全程 try/catch，任何失败只 warn 不抛——安装器绝不能弄死宿主启动。
  *
@@ -101,6 +103,9 @@ const PRESET_ROW_NAME = '@deepseek-ai/dsh-agent-preset'
 /** 需要落盘的预设源文件（与 presets/maoying/ 一一对应）。 */
 const PRESET_FILES = ['preset.yml', 'agent.cordis.yml', 'restrict.mjs', 'delegation-labels.mjs']
 
+/** v2 组合源（AgentPreset 形状，仅宿主 ≥ 0.2.1-rc.2 解析；不落盘，包内直读）。 */
+const AGENT_CORDIS_V2_FILE = 'agent.cordis.v2.yml'
+
 /** 新建 <home>/cordis.patch.yml 时的一行头注释：说明这是 home 级 patch 层。 */
 const HOME_PATCH_HEADER =
   '# DeepSeek Harness home 级 patch 层（作用于所有 profile）：手工条目可直接追加，各插件的托管块由起止标记维护。'
@@ -118,9 +123,11 @@ export function pluginVersion() {
 }
 
 /**
- * 中和 cordis 的 `!!js` 表达式（preprocessPatchText 式）。本仓库的
- * agent.cordis.yml 只有 process.platform 两处，直接 replaceAll；未来若新增
- * 其他 `!!js` 表达式，必须同步扩充这里，否则 yaml.parse 会告 unresolved tag。
+ * 中和 cordis 的 `!!js` 表达式（preprocessPatchText 式）。agent.cordis.yml 与
+ * agent.cordis.v2.yml 都只有 process.platform 两种表达式（tool-bash / tool-pwsh
+ * 的 disabled，v2 里 continuable 三角色的工具行各一对），直接 replaceAll；未来
+ * 任一文件新增其他 `!!js` 表达式，必须同步扩充这里，否则 yaml.parse 会告
+ * unresolved tag（test/composition.test.mjs 对 v2 有 grep 断言兜底）。
  */
 export function preprocessPatchText(text) {
   const isWin = process.platform === 'win32'
@@ -252,15 +259,72 @@ export function buildPresetRow({ meta, plugins }) {
 }
 
 /**
- * 序列化声明行为托管块正文（不含起止标记）：yaml 可用走 YAML 块形态；
- * yaml 不可用回退为整段 JSON 单行（YAML 1.2 是 JSON 超集，宿主解析无感）。
+ * 解析 agent.cordis.v2.yml（v2 组合源，patch 形态）为声明行数组。`!!js` 先
+ * 中和（见 preprocessPatchText）；顶层必须是单元素数组、唯一元素带非空 insert
+ * 数组（6 条 preset 声明行），不合形即抛——坏了宁可 fail-open 也不写半截块。
  */
-export function stringifyManagedBlock(yaml, row) {
+export function parsePresetRows(yaml, agentCordisV2Text) {
+  const data = yaml.parse(preprocessPatchText(agentCordisV2Text))
+  if (!Array.isArray(data) || data.length !== 1 || data[0] === null || typeof data[0] !== 'object' || Array.isArray(data[0])) {
+    throw new Error('agent.cordis.v2.yml 顶层必须是单元素数组，唯一元素为带 insert 键的映射')
+  }
+  const rows = data[0].insert
+  if (!Array.isArray(rows) || rows.length === 0) throw new Error('agent.cordis.v2.yml 缺少非空 insert 数组')
+  for (const row of rows) {
+    if (row === null || typeof row !== 'object' || Array.isArray(row) || typeof row.id !== 'string' || typeof row.name !== 'string') {
+      throw new Error('agent.cordis.v2.yml 的 insert 数组里存在不合形的声明行（缺 id/name）')
+    }
+  }
+  return rows
+}
+
+/**
+ * 按宿主版本组装托管块声明行数组（双形态的唯一决策点）：
+ *   - 宿主 ≥ 0.2.1-rc.2（hostRejectsInlineDelegation）→ 'v2'：解析
+ *     agent.cordis.v2.yml，返回 6 条声明行（主编 preset + 5 张角色 preset，
+ *     委派行 agentPreset 形状）；
+ *   - 否则（含版本读不到的保守侧）→ 'v1'：现有单行组装路径原样（内联
+ *     persona/toolFilter 形状）。
+ * yaml 包不可用或组合源解析失败时 rows 返回 null（shape/hostVersion 照常带回，
+ * reason 区分 'yaml-unavailable' / 'compose-failed'），由调用方走既有的「只落
+ * 文件、跳过声明行并 warn、下次自愈」分支。
+ */
+export function composeManagedRows(home, logger = console) {
+  const hostVersion = readHostVersion(home)
+  const useV2 = hostVersion !== null && hostRejectsInlineDelegation(hostVersion)
+  const shape = useV2 ? 'v2' : 'v1'
+  const yaml = loadYamlLib(home)
+  if (!yaml) return { shape, rows: null, hostVersion, yaml: null, reason: 'yaml-unavailable' }
+  try {
+    if (useV2) {
+      const text = readFileSync(path.join(PLUGIN_ROOT, 'presets', PRESET_ID, AGENT_CORDIS_V2_FILE), 'utf8')
+      return { shape, rows: parsePresetRows(yaml, text), hostVersion, yaml, reason: null }
+    }
+    const sourceDir = path.join(PLUGIN_ROOT, 'presets', PRESET_ID)
+    const meta = parsePresetMeta(yaml, readFileSync(path.join(sourceDir, 'preset.yml'), 'utf8'))
+    const plugins = parseAgentPlugins(yaml, readFileSync(path.join(sourceDir, 'agent.cordis.yml'), 'utf8'))
+    // rows 统一为 insert 列表（stringifyManagedBlock 据此渲染同一 - insert: 结构；
+    // 与 v1 历史产物逐字节同形，老 home 升级零抖动）
+    return { shape, rows: buildPresetRow({ meta, plugins }).insert, hostVersion, yaml, reason: null }
+  } catch (err) {
+    logger.warn?.(`maoying-installer: 组合源解析失败（${shape} 形态，已跳过声明行）: ${err?.message ?? err}`)
+    return { shape, rows: null, hostVersion, yaml, reason: 'compose-failed' }
+  }
+}
+
+/**
+ * 序列化声明行为托管块正文（不含起止标记）。参数 rows 是 insert 列表
+ * （v1 一行 / v2 六行），统一渲染为同一 `- insert:` 列表结构；yaml 可用走
+ * YAML 块形态，yaml 不可用回退为整段 JSON 单行（YAML 1.2 是 JSON 超集，
+ * 宿主解析无感）。
+ */
+export function stringifyManagedBlock(yaml, rows) {
+  const doc = [{ insert: Array.isArray(rows) ? rows : [rows] }]
   if (yaml) {
     // lineWidth: 0 关掉自动折行——plain 标量折行虽合法但产物不可读、diff 噪音大
-    return `${MANAGED_BEGIN}\n${yaml.stringify([row], { lineWidth: 0 }).replace(/\n+$/, '')}\n${MANAGED_END}`
+    return `${MANAGED_BEGIN}\n${yaml.stringify(doc, { lineWidth: 0 }).replace(/\n+$/, '')}\n${MANAGED_END}`
   }
-  return `${MANAGED_BEGIN}\n${JSON.stringify([row])}\n${MANAGED_END}`
+  return `${MANAGED_BEGIN}\n${JSON.stringify(doc)}\n${MANAGED_END}`
 }
 
 // ── home patch 托管块手术 ───────────────────────────────────────────────────
@@ -649,10 +713,12 @@ export async function registerCreatorRoutes(ctx) {
  *   1) 预设文件落盘（不依赖 yaml，任何情况都先做）；
  *   2) .installed-version 标记（内容与当前版本一致即不重写）；
  *   3) 方法论技能落盘到 <home>/skills/maoying-*（不依赖 yaml，独立可失败）；
- *   4) home patch 托管块（依赖 yaml；yaml 缺席时跳过并 warn，下次启动自愈）。
- * 返回 { status, home, presetDir, copied, skillsCopied, blockAction, reason }，
- * status 取 'ok'（全链路完成）| 'partial'（托管块未写，原因见 reason）；
- * skillsCopied 为本次有复制动作的技能目录名列表。
+ *   4) home patch 托管块（依赖 yaml；形态随宿主版本，见 composeManagedRows；
+ *      yaml 缺席或组合源坏时跳过并 warn，下次启动自愈）。
+ * 返回 { status, home, presetDir, copied, skillsCopied, blockAction, reason,
+ * shape, hostVersion }，status 取 'ok'（全链路完成）| 'partial'（托管块未写，
+ * 原因见 reason）；shape 为本次所选委派行形态（'v1' | 'v2'）；skillsCopied 为
+ * 本次有复制动作的技能目录名列表。
  */
 export function ensurePresetInstalled(ctx = {}) {
   const logger = ctx?.logger ?? console
@@ -697,19 +763,31 @@ export function ensurePresetInstalled(ctx = {}) {
     logger.warn?.(`maoying-installer: 技能落盘失败（已跳过，不影响预设本体）: ${err?.message ?? err}`)
   }
 
-  // 4) home patch 托管块
-  const yaml = loadYamlLib(home)
-  if (!yaml) {
+  // 4) home patch 托管块（v1 内联形状 / v2 AgentPreset 形状，随宿主版本切换）
+  const composed = composeManagedRows(home, logger)
+  const { shape, hostVersion } = composed
+  if (composed.rows === null) {
     logger.warn?.(
-      'maoying-installer: <home>/node_modules 下找不到 yaml 包，无法解析预设组合——' +
-        '预设文件已复制，但 cordis.patch.yml 声明行本次跳过，下次宿主启动自动补写',
+      composed.reason === 'yaml-unavailable'
+        ? 'maoying-installer: <home>/node_modules 下找不到 yaml 包，无法解析预设组合——' +
+            '预设文件已复制，但 cordis.patch.yml 声明行本次跳过，下次宿主启动自动补写'
+        : 'maoying-installer: 预设组合源解析失败——预设文件已复制，但 cordis.patch.yml 声明行本次跳过，' +
+            '修复后下次宿主启动自动补写（详见上方 warn）',
     )
-    return { status: 'partial', home, presetDir, copied, skillsCopied, blockAction: null, reason: 'yaml-unavailable' }
+    return {
+      status: 'partial',
+      home,
+      presetDir,
+      copied,
+      skillsCopied,
+      blockAction: null,
+      reason: composed.reason,
+      shape,
+      hostVersion,
+    }
   }
 
-  const meta = parsePresetMeta(yaml, readFileSync(path.join(sourceDir, 'preset.yml'), 'utf8'))
-  const plugins = parseAgentPlugins(yaml, readFileSync(path.join(sourceDir, 'agent.cordis.yml'), 'utf8'))
-  const blockText = stringifyManagedBlock(yaml, buildPresetRow({ meta, plugins }))
+  const blockText = stringifyManagedBlock(composed.yaml, composed.rows)
   const blockAction = upsertManagedBlock(home, blockText, { versionMarkerCurrent: markerCurrent })
 
   if (copied.length > 0) {
@@ -725,7 +803,12 @@ export function ensurePresetInstalled(ctx = {}) {
   } else if (blockAction === 'created') {
     logger.info?.(`maoying-installer: cordis.patch.yml 托管块已写入（v${version}）`)
   }
-  return { status: 'ok', home, presetDir, copied, skillsCopied, blockAction, reason: null }
+  logger.info?.(
+    shape === 'v2'
+      ? `maoying-installer: 委派行形状 v2（AgentPreset，宿主 DSH ${hostVersion ?? '版本未知'}）`
+      : `maoying-installer: 委派行形状 v1（内联 persona/toolFilter，宿主 DSH ${hostVersion ?? '版本未知'}）`,
+  )
+  return { status: 'ok', home, presetDir, copied, skillsCopied, blockAction, reason: null, shape, hostVersion }
 }
 
 /**
@@ -741,18 +824,8 @@ export function apply(ctx = {}, _config = {}) {
     logger.warn?.(`maoying-installer: 预设安装失败（已跳过，不影响宿主启动）: ${error?.message ?? error}`)
   }
 
-  // 宿主版本检查（独立于安装，失败静默）：0.2.1-rc.2 起内联委派行形状被拒
-  try {
-    const hostVersion = readHostVersion(resolveDshHome())
-    if (hostVersion !== null && hostRejectsInlineDelegation(hostVersion)) {
-      logger.warn?.(
-        `maoying-installer: 检测到宿主 DSH ${hostVersion}——毛颖的委派行是内联形状，` +
-          'DSH 0.2.1-rc.2+ 的 dsh-tool-subagent 拒绝该形状，请降级宿主或等毛颖适配版（详见 README「兼容面」）',
-      )
-    }
-  } catch {
-    /* 版本探测失败不提示——检查本身就是锦上添花 */
-  }
+  // 注：0.2.1-rc.2+ 的内联委派行守卫已由 v2 AgentPreset 形态适配（composeManagedRows
+  // 按宿主版本自动选形状，所选形态带在安装日志里），不再需要降级提示。
 
   // 创作台路由（三期）：与安装段彼此独立——注册失败只 warn，面板不可用不
   // 拖累安装器语义。注册是异步的（含 duplicate 短重试），这里挂 .catch 兜住
