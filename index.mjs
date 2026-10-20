@@ -818,11 +818,46 @@ export async function registerCreatorRoutes(ctx) {
           const dbg = readHostVersionDebug(home)
           let shape = null
           try { shape = composeManagedRows(home, ctx.logger).shape } catch { /* 诊断信息尽力而为 */ }
+          // 预设注册表内窥：每张 preset 的激活诊断只有注册表自己知道，防御式
+          // 探测其服务面（方法名在宿主版本间可能变动，全部吞错尽力而为）。
+          const jsonSafe = (v, depth = 0) => {
+            if (depth > 4) return '…'
+            try {
+              if (v === null || v === undefined) return v
+              if (typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean') return v
+              if (typeof v === 'function') return `[fn ${v.name || 'anon'}]`
+              if (Array.isArray(v)) return v.slice(0, 50).map((x) => jsonSafe(x, depth + 1))
+              if (v instanceof Map) return { __map: [...v.keys()].slice(0, 50) }
+              if (v instanceof Set) return { __set: [...v].slice(0, 50).map((x) => jsonSafe(x, depth + 1)) }
+              const out = {}
+              for (const k of Object.keys(v).slice(0, 80)) out[k] = jsonSafe(v[k], depth + 1)
+              return out
+            } catch { return '[unserializable]' }
+          }
+          const registryDump = {}
+          for (const svcName of ['agent-preset-registry', 'agentPresets', 'presets']) {
+            try {
+              const svc = typeof ctx.get === 'function' ? ctx.get(svcName) : null
+              if (!svc) continue
+              const entry = { __type: typeof svc, __keys: Object.keys(svc).slice(0, 60) }
+              for (const m of ['list', 'read', 'all', 'definitions', 'inventory', 'entries']) {
+                if (typeof svc[m] === 'function') {
+                  try {
+                    const r = svc[m]()
+                    entry[m] = r && typeof r.then === 'function' ? '[async]' : jsonSafe(r)
+                  } catch (e) { entry[m] = `throw: ${e?.message ?? e}` }
+                }
+              }
+              registryDump[svcName] = entry
+            } catch { /* 逐个吞错 */ }
+          }
           json(res, 200, {
             ok: true,
             hostVersion: dbg.version,
             trace: dbg.trace,
             shape,
+            registry: registryDump,
+            ctxKeys: (() => { try { return Object.keys(ctx).slice(0, 80) } catch { return [] } })(),
             runtime: {
               argv: process.argv,
               execPath: process.execPath,
