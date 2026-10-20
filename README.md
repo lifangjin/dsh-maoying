@@ -35,6 +35,13 @@ git clone https://github.com/lifangjin/dsh-maoying.git
 dsh plugin --profile web add link:"$PWD/dsh-maoying"
 ```
 
+只要命令行工具、不装插件的读者：零依赖 CLI 单独可用，`npx` 即跑，或装成全局命令（均为 npm 通道，与插件互不相干）：
+
+```bash
+npx maoying init                 # 免安装直接跑
+npm install -g dsh-maoying       # 或装成全局 maoying 命令
+```
+
 ## 怎么用
 
 选好预设后，对主编说话即可，它按工作流自己路由：
@@ -116,7 +123,7 @@ maoying export novel --format epub --out ~/Downloads   # 换输出目录
 
 输出目录默认 `<dir>/exports/`，文件名 `<书名>-<YYYYMMDD>.<扩展名>`（书名取 project.yml 的 title）；章节解析与 stats/index 同一套逻辑，frontmatter 不会混进正文。
 
-零依赖（node:fs/path/url/crypto），任意 cwd 可用；npm 全局安装或 `pnpm link` 后可直接 `maoying` 调用，否则 `node <插件目录>/bin/maoying.mjs` 等价。日常写作中 index.yml 由设定管理员直接重建，CLI 主要给人用。
+零依赖（node:fs/path/url/crypto），任意 cwd 可用。装法三选一：`npm install -g dsh-maoying`、随用随取的 `npx maoying <命令>`、或开发机的 `npm link`（仓库检出即改即生效）。三样都没有时 `node <插件目录>/bin/maoying.mjs` 等价（dsh 插件安装也会把包落进 profile，可直接指过去）。日常写作中 index.yml 由设定管理员直接重建，CLI 主要给人用。
 
 ## 卸载
 
