@@ -74,7 +74,7 @@ A reply of "ok / sure / go on" counts as confirmation; the chief advances direct
 Open "**毛颖创作台**" at the bottom of the DSH sidebar — a full-page cockpit for the human eye, beyond what agents do:
 
 - **Chapters**: status filters + the writing queue; click a chapter for full-page reading — back button, outline side-by-side (Markdown rendered), read-only manuscript, five narrative-dimension fields, one-click status flow.
-- **Novel Settings**: form-based editing of project.yml — title / author / genre / planned length / language / workflow phase / co-writing mode / synopsis; saving preserves the file's existing comments.
+- **Novel Settings**: form-based editing of project.yml — title / author / genre / planned length / language / workflow phase / co-writing mode / synopsis; saving preserves the file's existing comments. If project.yml was changed externally after the form loaded (manual edits or an agent advancing the phase), saving is rejected with a prompt to re-edit from the latest content instead of overwriting.
 - **Top bar**: current version always visible; a "new version ↗" badge links to the release page when npm has a newer one; the gear opens Settings — UI language (中文/English), six font-size steps (100%–150%), all applied immediately and remembered.
 
 The panel only writes state (chapter status, project.yml, index.yml rebuilds), never prose — prose belongs to the author and the chief.

@@ -42,14 +42,15 @@ webServer.register({ kind: 'prefix', path: '/api/maoying', handler: async (req, 
 | `host-debug` | GET | — | `{ ok, hostVersion, trace, shape, registry, runtime }`——现场诊断（见下节） |
 | `workspaces` | GET | — | `{ ok, workspaces: [{ path, name, hasNovel }] }`——workspaceRegistry.list() 逐根探测 `<root>/novel/project.yml` |
 | `state` | GET | `path=<root>` | 全量快照（见 §3 契约） |
+| `check` | GET | `path=<root>` | `{ ok, problems: [{ level, file, message }] }`——静态体检：与 CLI check 同源的 checkProject，读章节 frontmatter 原文（快照会把越枚举 status 归一成 pending，这里透出原始问题清单；level ∈ error/warn，可为空数组），概览「静态体检」黄条取数 |
 | `chapter` | GET | `path`, `file`（chapters/ 下文件名） | `{ ok, file, frontmatter, body, outline }`——正文全文 + 对应章纲（`{ file, words, body }`，outlines/ 无对应文件时 null），章节抽屉用 |
 | `chapter-status` | POST | `{ path, file, status }` | `{ ok }`——frontmatter status 行原地替换；status 必须 ∈ pending/writing/review/accepted |
 | `foreshadow-status` | POST | `{ path, id, status }` | `{ ok }`——foreshadows.yml 对应条目 status 行替换；∈ planted/progressing/resolved/abandoned |
 | `phase` | POST | `{ path, phase }` | `{ ok }`——project.yml phase 行替换；七态枚举 |
-| `project-save` | POST | `{ path, values }`（8 平键，title/author/genre/length/language/phase/mode/description） | `{ ok }`——mutateProject 逐键改写保行尾注释、缺键按模板补齐；phase/mode 越枚举与空书名 422 |
+| `project-save` | POST | `{ path, values, base_hash? }`（values 为 8 平键 title/author/genre/length/language/phase/mode/description；base_hash 为表单载入时的 project.yml 指纹，即快照 `project_hash`） | `{ ok, project_hash }`——mutateProject 逐键改写保行尾注释、缺键按模板补齐；phase/mode 越枚举与空书名 422；base_hash 与写入前现读原文不一致 → 409「外部修改冲突」拒写不落盘（人工改动保护：表单载入后文件被作者/agent 改过即拒绝静默覆盖；缺省 base_hash 跳过检查，兼容旧调用方）。project_hash 为写后新指纹，客户端可作下一轮基线 |
 | `rebuild-index` | POST | `{ path }` | `{ ok, chapters }`——照 CLI index 同一逻辑重建 index.yml |
 
-共 11 条。写操作全部「行级原地替换」：只在 frontmatter/目标 yml 的对应行上做字符串手术，写前读、写后校验（替换计数 ≠1 即 409 拒写并报错），不做整文件重排——把对 git diff 的扰动压到最小，也与 agent 的写法兼容。
+共 12 条。写操作全部「行级原地替换」：只在 frontmatter/目标 yml 的对应行上做字符串手术，写前读、写后校验（替换计数 ≠1 即 409 拒写并报错），不做整文件重排——把对 git diff 的扰动压到最小，也与 agent 的写法兼容。
 
 ### host-debug 端点（现场诊断）
 
@@ -71,6 +72,7 @@ webServer.register({ kind: 'prefix', path: '/api/maoying', handler: async (req, 
   "root": "<workspace root>",
   "novelDir": "<root>/novel",
   "found": true,                          // false 时其余字段缺省，面板显示「未初始化」引导
+  "project_hash": "9f86d0…",              // sha256(project.yml 原文) hex——面板保存回传 project-save 的 base_hash 做旧版检测（人工改动保护），读不到为 null；found:false 时恒为 null
   "project": { "title","author","genre","length","language","phase","mode","description" },  // mode: ai-draft|co-write|author-draft（五期）
   "chapters": [{ "file","volume","num","title","status","words","summary",
                  "cognitive_frame","emotional_anchor","world_texture",
@@ -105,7 +107,7 @@ webServer.register({ kind: 'prefix', path: '/api/maoying', handler: async (req, 
 
 九个 tab（顺序即默认排布，第 9 个为后续迭代新增）：
 
-1. **概览**：project 卡（书名大字 + 类型/篇幅/语言 pills + 阶段徽章 + 简介）；统计卡（总字数/章节数/状态分布条）；最近更新（chapters 按 mtime 前 5）；warnings 黄条。
+1. **概览**：project 卡（书名大字 + 类型/篇幅/语言 pills + 阶段徽章 + 简介）；统计卡（总字数/章节数/状态分布条）；最近更新（chapters 按 mtime 前 5）；warnings 黄条；静态体检黄条（check 路由问题清单，见 §4.1「待发」条目）。
 2. **章节**：表格（卷-章/标题/状态徽章/字数/梗概），状态筛选 pills；表格上方「按单写作」区块——有章纲且 status=pending 的章按序列出（章纲节选 + 状态徽章，共创模式的主工作清单）；行点击开整页阅读视图（0.1.12 起替代原右侧抽屉——fixed 侧弹层会被 DSH 侧边栏遮挡）：返回按钮 + GET chapter 正文（只读，等宽滚动）+ 章纲对照栏（左右分栏或折叠段）+ 复制文件路径按钮 + 五维字段卡 + 状态流转按钮（当前态 → 下一态一键，pending→writing→review→accepted）。
 3. **角色**：卡墙（姓名/role 徽章四色/年龄性别/性格一句/动机一行），点击看全卡（含 arc/markers/background）。
 4. **伏笔**：四列看板（埋设/推进/已回收/弃用），卡片含 priority 色点（high 红/normal 灰/low 淡）、`source: backfill` 的「回填」小徽章（账本回填来的条目，区别于写前规划）、埋设章→预期回收章、notes 全文直显（0.1.10 去掉两行截断）；卡片按钮：推进到下一状态（planted→progressing→resolved；abandoned 只能从看板拖不动、按钮给「弃用」）。列头计数。
@@ -121,11 +123,12 @@ webServer.register({ kind: 'prefix', path: '/api/maoying', handler: async (req, 
 - **MaskPortal**：抽屉/弹层统一 portal 到 `document.body`——面板容器挂在宿主会话中栏，中栏 transform/overflow 会把 `position: fixed` 劫持成相对自身并连同裁剪（桌面端「点了没反应」实测病灶）；无 createPortal 的老宿主退回原地渲染。
 - **顶栏版本区**：当前版本号常驻；`update-check` 路由（模仿 dsh-paoding：npm registry → npmmirror → GitHub 三级源，1h 缓存 + 7 天 stale-if-error，全败静默）发现新版时亮「有新版 ↗」徽章。
 - **系统设置**：齿轮弹窗，字号六档（100/110/120/130/140/150%）——面板根与 portal 节点读同一 `--myt-zoom` 变量整体 zoom，localStorage 记忆。
-- **界面语言**：系统设置可选中文/English——全部 UI 文案走 `I18N` 词典（zh/en 各 209 条，`tt`/`tf` 取词 + `{x}` 插值，zh 值与历史硬编码逐字一致保证中文界面零回归），切换立即生效整树重渲并 localStorage 记忆；语言自称（中文/日本語）与侧栏入口品牌名不翻译。
+- **界面语言**：系统设置可选中文/English——全部 UI 文案走 `I18N` 词典（zh/en 各 211 条，`tt`/`tf` 取词 + `{x}` 插值，zh 值与历史硬编码逐字一致保证中文界面零回归），切换立即生效整树重渲并 localStorage 记忆；语言自称（中文/日本語）与侧栏入口品牌名不翻译。
 - **Markdown 渲染**：零依赖渲染器（先整体转义再变换），章纲对照与世界观/科学设定描述不再裸显 md 源码；正文手稿仍走 pre。
 - **章节整页阅读**：替代右侧抽屉（侧边栏遮挡问题），返回按钮 + 章纲对照 + 五维 + 状态流转原位保留；阅读态隐藏 tab 条。
 - **小说设置 tab**（第 9 个）：project.yml 平键表单化编辑，`POST project-save` → `mutateProject` 逐键改写保行尾注释、缺键按模板补齐、phase/mode 越枚举与空书名 422。
 - **字号六档改百分比**（0.1.13）：档位从中文名（小/标准/大…）改为 100/110/120/130/140/150% 直读，旧 localStorage 档位值回落 100%。
+- **人工改动保护 + 静态体检黄条**（待发）：快照顶层新增 `project_hash`（project.yml 原文 sha256，读不到为 null）——小说设置保存回传 `base_hash`，表单载入后 project.yml 被作者手改或 agent（如 mutatePhase 推进 phase）动过时 `project-save` 409 拒写并报「外部修改冲突」，客户端重拉快照把表单放回磁盘真值，不再静默覆盖同名键丢人工改动；概览新增「静态体检」黄条（GET `check`，与 CLI check 同源的 checkProject，透出快照归一掩盖的越枚举等问题，含 error 级时整条转错误色）。路由 11 → 12 条；I18N zh/en 各 209 → 211 条（check.title / check.fullHint）。
 
 ## 5. 验收基线
 

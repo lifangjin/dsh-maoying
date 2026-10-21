@@ -14,8 +14,9 @@
 
 import test from 'node:test'
 import assert from 'node:assert/strict'
+import { createHash } from 'node:crypto'
 import { EventEmitter } from 'node:events'
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -356,7 +357,10 @@ test('project-save：正常改键 200 且保行尾注释；mode/phase 越枚举 
     },
   })
   assert.equal(ok.status, 200)
-  assert.deepEqual(JSON.parse(ok.raw), { ok: true })
+  const saved = JSON.parse(ok.raw)
+  assert.equal(saved.ok, true)
+  // 人工改动保护：响应带写后 project.yml 指纹（客户端下一轮保存的 base_hash）
+  assert.match(saved.project_hash, /^[0-9a-f]{64}$/)
   const project = readFileSync(path.join(env.root, 'novel', 'project.yml'), 'utf8')
   assert.ok(project.includes('title: 雪葬长夜（改）'))
   assert.ok(project.includes('mode: co-write'), '改键应落盘')
@@ -374,6 +378,58 @@ test('project-save：正常改键 200 且保行尾注释；mode/phase 越枚举 
     assert.equal(bad.status, 422, `${field} 越枚举应 422`)
     assert.ok(JSON.parse(bad.raw).error.includes(field), `错误信息应点名 ${field}`)
   }
+})
+
+test('project-save：过期 base_hash 409 拒写（外部修改冲突），最新 base_hash 200', async () => {
+  const env = makeEnv()
+  const handler = await registeredHandler(env)
+  const projectPath = path.join(env.root, 'novel', 'project.yml')
+  const post = (base_hash) => call(handler, {
+    method: 'POST', url: '/api/maoying/project-save', headers: LOOPBACK,
+    body: { path: env.root, base_hash, values: { title: '基线试金石', phase: 'writing', mode: 'ai-draft' } },
+  })
+
+  // 过期指纹（磁盘上的 project.yml 与它不一致）→ 409 走统一错误通道，不落盘
+  const stale = await post('0'.repeat(64))
+  assert.equal(stale.status, 409)
+  const staleBody = JSON.parse(stale.raw)
+  assert.equal(staleBody.ok, false)
+  assert.ok(staleBody.error.includes('外部修改'), `错误应点名外部修改：${staleBody.error}`)
+  assert.ok(readFileSync(projectPath, 'utf8').includes('title: 雪葬长夜'), '409 拒写不得落盘')
+
+  // 最新指纹 → 200，响应带写后新指纹
+  const fresh = createHash('sha256').update(readFileSync(projectPath, 'utf8'), 'utf8').digest('hex')
+  const ok = await post(fresh)
+  assert.equal(ok.status, 200)
+  const body = JSON.parse(ok.raw)
+  assert.equal(body.ok, true)
+  assert.match(body.project_hash, /^[0-9a-f]{64}$/)
+  assert.ok(readFileSync(projectPath, 'utf8').includes('title: 基线试金石'))
+})
+
+test('check：status 越枚举章节透出 error 级问题；非白名单 path 403', async () => {
+  const env = makeEnv()
+  const handler = await registeredHandler(env)
+  // 面板快照会把越枚举 status 归一成 pending（人工改坏看不出来）——checkProject
+  // 读 frontmatter 原文，这里造一个只有 check 才抓得到的坏章
+  const chapterPath = path.join(env.root, 'novel', 'chapters', 'v01-c002.md')
+  writeFileSync(chapterPath, readFileSync(chapterPath, 'utf8').replace('status: writing', 'status: done'), 'utf8')
+
+  const state = await call(handler, {
+    url: `/api/maoying/check?path=${encodeURIComponent(env.root)}`,
+    headers: LOOPBACK,
+  })
+  assert.equal(state.status, 200)
+  const body = JSON.parse(state.raw)
+  assert.equal(body.ok, true)
+  assert.ok(Array.isArray(body.problems))
+  const hit = body.problems.find((p) => p.file === 'chapters/v01-c002.md' && p.level === 'error')
+  assert.ok(hit, `problems 应含 v01-c002 的 error 条目：${JSON.stringify(body.problems)}`)
+  assert.ok(hit.message.includes('status 越枚举'), `error 应点名 status 越枚举：${hit.message}`)
+
+  // path 安全校验与 state 路由同款：白名单外一律 403
+  const foreign = await call(handler, { url: `/api/maoying/check?path=${encodeURIComponent('/etc')}`, headers: LOOPBACK })
+  assert.equal(foreign.status, 403)
 })
 
 test('update-check：200 且响应形状完整（三级源全败也回降级形状）', async () => {

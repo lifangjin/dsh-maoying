@@ -10,6 +10,7 @@
 
 import test from 'node:test'
 import assert from 'node:assert/strict'
+import { createHash } from 'node:crypto'
 import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 
@@ -238,7 +239,21 @@ test('parseStateSnapshot：未初始化（无 project.yml）found=false 其余�
   const novel = path.join(root, 'novel')
   mkdirSync(novel, { recursive: true })
   const snap = parseStateSnapshot(novel, { yamlLib: null })
-  assert.deepEqual(snap, { ok: true, root: path.resolve(root), novelDir: path.resolve(novel), found: false, warnings: [] })
+  assert.deepEqual(snap, { ok: true, root: path.resolve(root), novelDir: path.resolve(novel), found: false, project_hash: null, warnings: [] })
+})
+
+test('parseStateSnapshot：project_hash 为 project.yml 原文 sha256，动一个字节即变（人工改动保护基线）', () => {
+  const root = makeTmpRoot()
+  const novel = buildSampleNovel(root)
+  const target = path.join(novel, 'project.yml')
+  const snap = parseStateSnapshot(novel, { yamlLib: null })
+  assert.ok(/^[0-9a-f]{64}$/.test(snap.project_hash), `应为 64 位小写 hex，实得 ${snap.project_hash}`)
+  assert.equal(snap.project_hash, createHash('sha256').update(readFileSync(target, 'utf8'), 'utf8').digest('hex'))
+
+  // 外部改一个字节：快照指纹跟着变——面板保存拿旧值当 base_hash 就会被 409
+  const before = snap.project_hash
+  writeFileSync(target, readFileSync(target, 'utf8').replace('title: 雪葬长夜', 'title: 雪葬长夜！'), 'utf8')
+  assert.notEqual(parseStateSnapshot(novel, { yamlLib: null }).project_hash, before)
 })
 
 test('parseStateSnapshot：yaml 包可用时真解析（条件执行，本机借不到就跳过）', (t) => {
@@ -396,7 +411,7 @@ test('mutateProject：批量改写保注释、缺键补齐、越枚举/空书名
   assert.deepEqual(mutateProject(novel, {
     title: '新 书名: 带冒号', author: '墨客', genre: '东方玄幻', length: '约100万字',
     language: 'zh', phase: 'outline', mode: 'co-write', description: '一句话"简介"',
-  }), { ok: true })
+  }), { ok: true, project_hash: createHash('sha256').update(readFileSync(target, 'utf8'), 'utf8').digest('hex') })
   const after = readFileSync(target, 'utf8')
   assert.ok(after.includes('title: "新 书名: 带冒号"'), '含冒号空格的值应双引号包裹')
   assert.ok(after.includes('mode: co-write'), 'mode 应写入')
@@ -460,6 +475,35 @@ test('mutateProject：纯数字/布尔形书名（2046、true、-2.5）落盘带
     mutateProject(novel, { title, phase: 'idea', mode: 'ai-draft' })
     assert.equal(readFileSync(target, 'utf8'), text, `「${title}」连存两次应逐字节一致`)
   }
+})
+
+test('mutateProject：baseHash 基线一致放行并返回新 hash；过期基线 409 拒写不落盘；缺省跳过检查', () => {
+  const root = makeTmpRoot()
+  const novel = buildSampleNovel(root)
+  const target = path.join(novel, 'project.yml')
+  const values = { title: '基线一致', author: '墨客', genre: '', length: '', language: 'zh', phase: 'writing', mode: 'ai-draft', description: '' }
+  const baseline = createHash('sha256').update(readFileSync(target, 'utf8'), 'utf8').digest('hex')
+
+  // 基线一致：写成功，返回写后新指纹（客户端下一轮保存的基线）
+  const res = mutateProject(novel, values, { baseHash: baseline })
+  assert.equal(res.ok, true)
+  const after = readFileSync(target, 'utf8')
+  assert.ok(after.includes('title: 基线一致'))
+  assert.equal(res.project_hash, createHash('sha256').update(after, 'utf8').digest('hex'))
+
+  // 过期基线（baseline 是首次写入前的指纹，文件已被上面那次「外部改动」推进）：
+  // 409 点名外部修改，且文件一个字节都不动
+  const stale = readFileSync(target, 'utf8')
+  assertFails(() => mutateProject(novel, { ...values, title: '覆盖未遂' }, { baseHash: baseline }), 409, '外部修改')
+  assert.equal(readFileSync(target, 'utf8'), stale, '409 拒写不得落盘')
+
+  // 缺省 options（旧调用方）：跳过旧版检测，行为与现状一致
+  assert.deepEqual(Object.keys(mutateProject(novel, { ...values, title: '无基线' })), ['ok', 'project_hash'])
+  assert.ok(readFileSync(target, 'utf8').includes('title: 无基线'))
+
+  // 指纹大小写宽容：大写 hex 视为同值（指纹本身 hex，归一后比较）
+  const fresh = createHash('sha256').update(readFileSync(target, 'utf8'), 'utf8').digest('hex').toUpperCase()
+  assert.equal(mutateProject(novel, { ...values, title: '大写基线' }, { baseHash: fresh }).ok, true)
 })
 
 test('parseFrontmatterFallback：__proto__ 键只落自身属性，改写不了原型（null 原型加固）', () => {

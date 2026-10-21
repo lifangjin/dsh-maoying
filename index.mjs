@@ -72,6 +72,8 @@ import {
   rebuildIndex,
   resolveNovelRoot,
 } from './lib/panel-core.mjs'
+// 静态体检（check 路由）与 CLI check 同源：直接复用 novel-parse 的检查器。
+import { checkProject } from './lib/novel-parse.mjs'
 import { loadYamlLib, resolveDshHome } from './lib/yaml-loader.mjs'
 
 // loadYamlLib / resolveDshHome 已迁至 lib/yaml-loader.mjs（创作台业务层与
@@ -937,7 +939,7 @@ export async function registerPrefixRouteWithRetry(webServer, route, { attempts 
 }
 
 /**
- * 注册创作台全部路由（docs/creator-panel.md §2 的 11 条）。返回宿主 disposer；
+ * 注册创作台全部路由（docs/creator-panel.md §2 的 12 条）。返回宿主 disposer；
  * webServer 缺席（非 web 部署）时抛错，由 apply 侧统一降级为 warn。
  */
 export async function registerCreatorRoutes(ctx) {
@@ -1057,6 +1059,17 @@ export async function registerCreatorRoutes(ctx) {
           return
         }
 
+        if (route === 'check' && req.method === 'GET') {
+          // 静态体检：checkProject 读章节 frontmatter 原文——快照会把越枚举
+          // status 归一成 pending（人工改坏在面板里看不出来），这里原样透出
+          // 问题清单，概览「静态体检」黄条取数。checkProject 自带的 ok 是
+          // 「无 error」语义、summary 是 CLI 退出码原料，都不进面板契约
+          // （§2 出参就是 { ok, problems }），客户端自己按 level 计数。
+          const novelDir = resolveNovelRoot(url.searchParams.get('path'), ctx.workspaceRegistry)
+          json(res, 200, { ok: true, problems: checkProject(novelDir).problems })
+          return
+        }
+
         if (route === 'chapter' && req.method === 'GET') {
           // 章节正文全文（抽屉用）：file 只认 chapters/ 下纯文件名；响应组装
           // 直传 readChapter 结果（五期起含对应章纲 outline 字段，无章纲为
@@ -1090,7 +1103,9 @@ export async function registerCreatorRoutes(ctx) {
         if (route === 'project-save' && req.method === 'POST') {
           const body = await readBody(req, res)
           const novelDir = resolveNovelRoot(body.path, ctx.workspaceRegistry)
-          json(res, 200, mutateProject(novelDir, body.values))
+          // base_hash = 面板表单载入时的 project.yml 指纹：外部改过 → 409 拒写
+          // （人工改动保护）；旧客户端不带该字段 → undefined，跳过检查。
+          json(res, 200, mutateProject(novelDir, body.values, { baseHash: body.base_hash }))
           return
         }
 

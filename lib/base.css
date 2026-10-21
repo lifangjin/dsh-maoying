@@ -294,6 +294,13 @@ html[data-dsh-maoying-active]:not([data-dsh-mnemon-active]):not([data-dsh-taskbo
 .myt-stripIcon { display: inline-flex; flex: none; }
 .myt-stripText { min-width: 0; overflow-wrap: anywhere; }
 .myt-stripWarn { border-color: color-mix(in srgb, var(--dsw-alias-state-warn-primary) 40%, transparent); background: color-mix(in srgb, var(--dsw-alias-state-warn-primary) 10%, transparent); color: var(--dsw-alias-state-warn-primary);}
+/* 静态体检黄条的错误强调（叠加在 myt-stripWarn 上）：含 error 级问题时整条
+   转错误色——纯警告（0 错误）保持黄色不动，一眼分清「有错」和「仅提醒」。 */
+.myt-stripCheckErr {
+  border-color: color-mix(in srgb, var(--dsw-alias-state-error-primary) 40%, transparent);
+  background: color-mix(in srgb, var(--dsw-alias-state-error-primary) 10%, transparent);
+  color: var(--dsw-alias-state-error-primary);
+}
 .myt-stripError {
   border-color: color-mix(in srgb, var(--dsw-alias-state-error-primary) 40%, transparent);
   background: color-mix(in srgb, var(--dsw-alias-state-error-primary) 10%, transparent);
