@@ -54,6 +54,7 @@
 import { closeSync, copyFileSync, existsSync, mkdirSync, openSync, readdirSync, readFileSync, readSync, rmSync, writeFileSync } from 'node:fs'
 import { createHash } from 'node:crypto'
 import { pathToFileURL } from 'node:url'
+import { getVersionInfo } from './lib/version.mjs'
 import { readFile } from 'node:fs/promises'
 import { createRequire } from 'node:module'
 import os from 'node:os'
@@ -828,6 +829,13 @@ export async function registerCreatorRoutes(ctx) {
             ctx.logger?.warn?.('maoying 创作台: client.css 读取失败: ' + String(err?.message ?? err))
             json(res, 500, { ok: false, error: sanitizeMessage(`client.css 不可用: ${err?.message ?? err}`) })
           }
+          return
+        }
+
+        if (route === 'update-check' && req.method === 'GET') {
+          // 新版检测（模仿 dsh-paoding）：三级源 + 缓存都在 lib/version.mjs，
+          // 全失败也静默降级——这里只做转发，绝不影响面板主流程。
+          json(res, 200, { ok: true, ...(await getVersionInfo({ timeoutMs: 3000 })) })
           return
         }
 
