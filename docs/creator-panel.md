@@ -39,6 +39,7 @@ webServer.register({ kind: 'prefix', path: '/api/maoying', handler: async (req, 
 |---|---|---|---|
 | `client.css` | GET | — | text/css（lib/base.css 现读，no-cache） |
 | `update-check` | GET | — | `{ ok, current, latest, updateAvailable, releaseUrl, checkedAt, error, source }`——新版检测（npm registry → npmmirror → GitHub 三级源，1h 缓存 + 7 天 stale-if-error，全败静默降级为 latest=null / error 非空） |
+| `self-update` | POST | — | `{ ok, from, to, restartRequired: true }` 或 `{ ok: false, kind, error }`——面板内一键升级：安装形态/pnpm 探测通过后跑 `pnpm --dir <profileDir> add dsh-maoying@latest`（180s 超时，无 shell）。仅支持 `<dshHome>/profiles/<profile>/node_modules/dsh-maoying` 真实目录安装；symlink/dev 检出（dev-link）与非 profile 布局（unsupported-layout）、pnpm 缺失（pnpm-missing）、超时（timeout）、pnpm 非零退出（pnpm-failed）一律 200 + ok:false。**装完只换磁盘包，运行中进程仍是旧代码，restartRequired 恒 true——重启 DeepSeek 后生效** |
 | `host-debug` | GET | — | `{ ok, hostVersion, trace, shape, registry, runtime }`——现场诊断（见下节） |
 | `workspaces` | GET | — | `{ ok, workspaces: [{ path, name, hasNovel }] }`——workspaceRegistry.list() 逐根探测 `<root>/novel/project.yml` |
 | `state` | GET | `path=<root>` | 全量快照（见 §3 契约） |
@@ -50,7 +51,7 @@ webServer.register({ kind: 'prefix', path: '/api/maoying', handler: async (req, 
 | `project-save` | POST | `{ path, values, base_hash? }`（values 为 8 平键 title/author/genre/length/language/phase/mode/description；base_hash 为表单载入时的 project.yml 指纹，即快照 `project_hash`） | `{ ok, project_hash }`——mutateProject 逐键改写保行尾注释、缺键按模板补齐；phase/mode 越枚举与空书名 422；base_hash 与写入前现读原文不一致 → 409「外部修改冲突」拒写不落盘（人工改动保护：表单载入后文件被作者/agent 改过即拒绝静默覆盖；缺省 base_hash 跳过检查，兼容旧调用方）。project_hash 为写后新指纹，客户端可作下一轮基线 |
 | `rebuild-index` | POST | `{ path }` | `{ ok, chapters }`——照 CLI index 同一逻辑重建 index.yml |
 
-共 12 条。写操作全部「行级原地替换」：只在 frontmatter/目标 yml 的对应行上做字符串手术，写前读、写后校验（替换计数 ≠1 即 409 拒写并报错），不做整文件重排——把对 git diff 的扰动压到最小，也与 agent 的写法兼容。
+共 13 条。写操作全部「行级原地替换」：只在 frontmatter/目标 yml 的对应行上做字符串手术，写前读、写后校验（替换计数 ≠1 即 409 拒写并报错），不做整文件重排——把对 git diff 的扰动压到最小，也与 agent 的写法兼容。（`self-update` 是例外：它不碰小说文件，跑的是 pnpm 安装。）
 
 ### host-debug 端点（现场诊断）
 
@@ -129,6 +130,7 @@ webServer.register({ kind: 'prefix', path: '/api/maoying', handler: async (req, 
 - **小说设置 tab**（第 9 个）：project.yml 平键表单化编辑，`POST project-save` → `mutateProject` 逐键改写保行尾注释、缺键按模板补齐、phase/mode 越枚举与空书名 422。
 - **字号六档改百分比**（0.1.13）：档位从中文名（小/标准/大…）改为 100/110/120/130/140/150% 直读，旧 localStorage 档位值回落 100%。
 - **人工改动保护 + 静态体检黄条**（待发）：快照顶层新增 `project_hash`（project.yml 原文 sha256，读不到为 null）——小说设置保存回传 `base_hash`，表单载入后 project.yml 被作者手改或 agent（如 mutatePhase 推进 phase）动过时 `project-save` 409 拒写并报「外部修改冲突」，客户端重拉快照把表单放回磁盘真值，不再静默覆盖同名键丢人工改动；概览新增「静态体检」黄条（GET `check`，与 CLI check 同源的 checkProject，透出快照归一掩盖的越枚举等问题，含 error 级时整条转错误色）。路由 11 → 12 条；I18N zh/en 各 209 → 211 条（check.title / check.fullHint）。
+- **面板内一键升级**（待发）：`POST self-update`（lib/self-update.mjs，依赖全部可注入）——顶栏新版徽章旁加「一键升级」按钮，安装形态（`<dshHome>/profiles/<profile>/node_modules/dsh-maoying` 真实目录，symlink/dev 检出一票否决）与 pnpm 可执行性（PATH → homebrew/pnpm 官方安装位候选）双闸通过后跑 `pnpm --dir <profileDir> add dsh-maoying@latest`（180s 超时、无 shell、模块级 in-flight 去重），成功后失效版本检测缓存并提示「已安装 {to}，重启 DeepSeek 后生效」——**装完只换磁盘包，重启才生效，UI 文案照实说**；安装中按钮禁用（前端该请求超时放宽到 200s），「已安装，待重启」后徽章收起。路由 12 → 13 条；I18N zh/en 各 211 → 219 条（header.upgrade* / toast.selfUpdate.*）。
 
 ## 5. 验收基线
 

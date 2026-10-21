@@ -55,6 +55,7 @@ import { closeSync, copyFileSync, existsSync, mkdirSync, openSync, readdirSync, 
 import { createHash } from 'node:crypto'
 import { pathToFileURL } from 'node:url'
 import { getVersionInfo } from './lib/version.mjs'
+import { selfUpdate } from './lib/self-update.mjs'
 import { readFile } from 'node:fs/promises'
 import { createRequire } from 'node:module'
 import os from 'node:os'
@@ -939,7 +940,7 @@ export async function registerPrefixRouteWithRetry(webServer, route, { attempts 
 }
 
 /**
- * 注册创作台全部路由（docs/creator-panel.md §2 的 12 条）。返回宿主 disposer；
+ * 注册创作台全部路由（docs/creator-panel.md §2 的 13 条）。返回宿主 disposer；
  * webServer 缺席（非 web 部署）时抛错，由 apply 侧统一降级为 warn。
  */
 export async function registerCreatorRoutes(ctx) {
@@ -989,6 +990,23 @@ export async function registerCreatorRoutes(ctx) {
           // 新版检测（模仿 dsh-paoding）：三级源 + 缓存都在 lib/version.mjs，
           // 全失败也静默降级——这里只做转发，绝不影响面板主流程。
           json(res, 200, { ok: true, ...(await getVersionInfo({ timeoutMs: 3000 })) })
+          return
+        }
+
+        if (route === 'self-update' && req.method === 'POST') {
+          // 面板内一键升级：形态/pnpm 检查 + `pnpm --dir <profileDir> add
+          // dsh-maoying@latest`（细节与安全边界见 lib/self-update.mjs）。可
+          // 预期的失败（dev-link / unsupported-layout / pnpm-missing / 超时 /
+          // pnpm 非零退出）统一 HTTP 200 + ok:false，kind 给客户端分流、
+          // message 经 sanitizeMessage 脱敏后透出；成功也带 restartRequired:
+          // true——装完的只是磁盘上的新包，运行中的进程仍是旧代码，必须重启
+          // DeepSeek 才生效，客户端文案必须照实转述。
+          const r = await selfUpdate({ logger: ctx.logger })
+          if (r.ok) {
+            json(res, 200, { ok: true, from: r.from ?? null, to: r.to ?? null, restartRequired: true })
+          } else {
+            json(res, 200, { ok: false, kind: r.kind, error: sanitizeMessage(r.message ?? r.kind) })
+          }
           return
         }
 
