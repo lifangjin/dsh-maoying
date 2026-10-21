@@ -144,10 +144,11 @@ test('parseStateSnapshot（回退解析）：§3 契约字段逐一就位', () =
   assert.equal(lin.role, 'supporting')
   assert.deepEqual(lin.markers, ['紧张时摩挲袖口', '说话前先抿嘴'])
 
-  // relations
+  // relations：端点归一——契约里的 slug（lin-waner/shen-mo）出快照时改写成角色
+  // name（林晚儿/沈默），关系图客户端按 name 找节点才有边可画
   assert.equal(snap.relations.length, 1)
   assert.deepEqual(snap.relations[0], {
-    a: 'lin-waner', b: 'shen-mo', type: '宿敌',
+    a: '林晚儿', b: '沈默', type: '宿敌',
     description: '当铺交锋结下的梁子', intensity: 4,
     started: 'v01-c003', ended: '',
   })
@@ -204,6 +205,32 @@ test('parseStateSnapshot（回退解析）：§3 契约字段逐一就位', () =
   // warnings：坏目录 + 坏条目各一条
   assert.ok(snap.warnings.some((w) => w.includes('characters/broken.md') && w.includes('读取失败')), `warnings 应含坏目录条目，实得 ${JSON.stringify(snap.warnings)}`)
   assert.ok(snap.warnings.some((w) => w.includes('foreshadows.yml') && w.includes('不是键值映射')), `warnings 应含坏条目，实得 ${JSON.stringify(snap.warnings)}`)
+})
+
+test('parseStateSnapshot：relations 端点归一——未知 slug 与 name 端点原样保留', () => {
+  const root = makeTmpRoot()
+  const novel = buildSampleNovel(root)
+  writeFileSync(path.join(novel, 'relations.yml'), `- a: lin-waner
+  b: ghost-x
+  type: 暂别
+  description: 未建档角色端点保留原值
+  intensity: 2
+  started: v01-c001
+  ended: ""
+- a: 林晚儿
+  b: shen-mo
+  type: 旧识
+  description: 历史条目直接写 name，无 slug 可对，原样保留
+  intensity: 3
+  started: v01-c001
+  ended: ""
+`, 'utf8')
+  const snap = parseStateSnapshot(novel, { yamlLib: null })
+  assert.equal(snap.relations.length, 2)
+  assert.deepEqual(snap.relations.map((r) => [r.a, r.b]), [
+    ['林晚儿', 'ghost-x'],
+    ['林晚儿', '沈默'],
+  ])
 })
 
 test('parseStateSnapshot：未初始化（无 project.yml）found=false 其余缺省', () => {

@@ -77,7 +77,7 @@ webServer.register({ kind: 'prefix', path: '/api/maoying', handler: async (req, 
                  "suspense","interpersonal_tension" }],     // 按 volume,num 升序；words 为 CJK 计数
   "characters": [{ "file","name","age","gender","role","appearance","personality",
                    "background","motivation","arc","markers" }], // markers 数组，缺省 []
-  "relations": [{ "a","b","type","description","intensity","started","ended" }],
+  "relations": [{ "a","b","type","description","intensity","started","ended" }], // a/b：relations.yml 里是角色 slug，出快照时对得上角色卡的端点归一成 name（关系图按 name 找节点），对不上原样保留
   "foreshadows": [{ "id","title","status","priority","planted_chapter",
                     "expected_resolve","resolved_chapter","notes","source" }], // source: plan|backfill，缺省 plan
   "timeline": [{ "year","title","description","importance","chapter" }],
