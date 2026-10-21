@@ -66,6 +66,7 @@ import {
   mutateChapterStatus,
   mutateForeshadowStatus,
   mutatePhase,
+  mutateProject,
   parseStateSnapshot,
   readChapter,
   rebuildIndex,
@@ -931,6 +932,13 @@ export async function registerCreatorRoutes(ctx) {
           const body = await readBody(req)
           const novelDir = resolveNovelRoot(body.path, ctx.workspaceRegistry)
           json(res, 200, mutatePhase(novelDir, body.phase))
+          return
+        }
+
+        if (route === 'project-save' && req.method === 'POST') {
+          const body = await readBody(req)
+          const novelDir = resolveNovelRoot(body.path, ctx.workspaceRegistry)
+          json(res, 200, mutateProject(novelDir, body.values))
           return
         }
 

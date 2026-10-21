@@ -26,6 +26,7 @@ const {
   mutateChapterStatus,
   mutateForeshadowStatus,
   mutatePhase,
+  mutateProject,
   rebuildIndex,
   PanelError,
 } = await import('../lib/panel-core.mjs')
@@ -91,7 +92,7 @@ test('parseStateSnapshot（回退解析）：§3 契约字段逐一就位', () =
   assert.ok(Array.isArray(snap.warnings))
 
   // project 七键
-  assert.deepEqual(Object.keys(snap.project).sort(), ['author', 'description', 'genre', 'language', 'length', 'phase', 'title'])
+  assert.deepEqual(Object.keys(snap.project).sort(), ['author', 'description', 'genre', 'language', 'length', 'mode', 'phase', 'title'])
   assert.equal(snap.project.title, '雪葬长夜')
   assert.equal(snap.project.phase, 'writing')
   assert.equal(snap.project.language, 'zh')
@@ -320,6 +321,41 @@ test('mutatePhase：正常推进且保住行尾注释；非法值 422；无 phas
   mkdirSync(novel2, { recursive: true })
   writeFileSync(path.join(novel2, 'project.yml'), 'title: 无阶段\n', 'utf8')
   assertFails(() => mutatePhase(novel2, 'writing'), 409)
+})
+
+test('mutateProject：批量改写保注释、缺键补齐、越枚举/空书名 422、特殊字符引号包裹', () => {
+  const root = makeTmpRoot()
+  const novel = buildSampleNovel(root)
+  const target = path.join(novel, 'project.yml')
+  const before = readFileSync(target, 'utf8')
+
+  assert.deepEqual(mutateProject(novel, {
+    title: '新 书名: 带冒号', author: '墨客', genre: '东方玄幻', length: '约100万字',
+    language: 'zh', phase: 'outline', mode: 'co-write', description: '一句话"简介"',
+  }), { ok: true })
+  const after = readFileSync(target, 'utf8')
+  assert.ok(after.includes('title: "新 书名: 带冒号"'), '含冒号空格的值应双引号包裹')
+  assert.ok(after.includes('mode: co-write'), 'mode 应写入')
+  assert.ok(after.includes('phase: outline'), 'phase 应写入')
+  assert.ok(/phase: outline[ \t]*#/.test(after), 'phase 行尾注释应保留')
+  assert.ok(after.includes('author: 墨客'), '安全字符裸写')
+  assert.ok(after.includes('description: "一句话\\"简介\\""' .replaceAll('\\\\', '\\')), '双引号应转义包裹')
+  // 原有注释头不应丢
+  assert.ok(after.includes('# project.yml'), '模板注释头应保留')
+
+  assertFails(() => mutateProject(novel, { title: 'x', phase: 'done', mode: 'ai-draft' }), 422)
+  assertFails(() => mutateProject(novel, { title: 'x', phase: 'idea', mode: 'ghost' }), 422)
+  assertFails(() => mutateProject(novel, { title: '  ', phase: 'idea', mode: 'ai-draft' }), 422)
+
+  // 缺键补齐：只有 title/phase/mode 的文件，其余键应按模板补在末尾
+  const root2 = makeTmpRoot()
+  const novel2 = path.join(root2, 'novel')
+  mkdirSync(novel2, { recursive: true })
+  writeFileSync(path.join(novel2, 'project.yml'), 'title: 简本\nphase: idea\nmode: ai-draft\n', 'utf8')
+  mutateProject(novel2, { title: '简本', phase: 'idea', mode: 'ai-draft', author: '阿墨' })
+  const text2 = readFileSync(path.join(novel2, 'project.yml'), 'utf8')
+  assert.ok(text2.includes('author: 阿墨'), '缺失键应补齐')
+  assert.ok(text2.includes('language: zh'), '语言缺省补 zh')
 })
 
 test('rebuildIndex：index.yml 落盘且确定性（两次重建逐字节一致）；chapters/ 缺失 404', () => {

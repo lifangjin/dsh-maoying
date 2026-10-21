@@ -826,3 +826,26 @@ html[data-dsh-maoying-active]:not([data-dsh-mnemon-active]):not([data-dsh-taskbo
 .myt-md a { color: var(--dsw-alias-state-business-primary); text-decoration: none; }
 .myt-md a:hover { text-decoration: underline; }
 .myt-md strong { color: var(--dsw-alias-label-primary); }
+
+/* ── 小说设置 tab ──────────────────────────────────────────────────────── */
+.myt-setGrid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px 16px; }
+.myt-setField { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.myt-setFieldLabel { font-size: 11px; line-height: 16px; color: var(--dsw-alias-label-tertiary); }
+.myt-setInput {
+  padding: 6px 10px;
+  border: 1px solid var(--dsw-alias-border-l1);
+  border-radius: 8px;
+  background: var(--dsw-alias-bg-layer-1, transparent);
+  color: var(--dsw-alias-label-primary);
+  font-size: 12.5px;
+  line-height: 18px;
+  font-family: inherit;
+  min-width: 0;
+}
+.myt-setInput:focus {
+  outline: none;
+  border-color: color-mix(in srgb, var(--dsw-alias-state-business-primary) 55%, transparent);
+}
+.myt-setArea { resize: vertical; }
+.myt-setSelect { cursor: pointer; }
+.myt-setActions { display: flex; justify-content: flex-end; gap: 8px; }
