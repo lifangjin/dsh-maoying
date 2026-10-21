@@ -1,6 +1,6 @@
 {
   "name": "dsh-maoying",
-  "version": "0.1.12",
+  "version": "0.1.13",
   "description": "毛颖 — DSH 网文创作辅助插件：主编 + 五帮手编排（大纲/写手/审校/设定/考据），novel/ 结构化文件为数据库",
   "type": "module",
   "license": "MIT",

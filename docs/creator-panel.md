@@ -116,7 +116,7 @@ webServer.register({ kind: 'prefix', path: '/api/maoying', handler: async (req, 
 
 状态徽章色（全局统一）：pending 灰 / writing 蓝 / review 橙 / accepted 绿；phase 七态沿用七色 pill。文案全中文、禁 emoji 图标（用 ui-primitives 图标或纯 CSS）。
 
-## 4.1 后续迭代记录（0.1.10 – 0.1.12）
+## 4.1 后续迭代记录（0.1.10 – 0.1.13）
 
 - **MaskPortal**：抽屉/弹层统一 portal 到 `document.body`——面板容器挂在宿主会话中栏，中栏 transform/overflow 会把 `position: fixed` 劫持成相对自身并连同裁剪（桌面端「点了没反应」实测病灶）；无 createPortal 的老宿主退回原地渲染。
 - **顶栏版本区**：当前版本号常驻；`update-check` 路由（模仿 dsh-paoding：npm registry → npmmirror → GitHub 三级源，1h 缓存 + 7 天 stale-if-error，全败静默）发现新版时亮「有新版 ↗」徽章。
@@ -125,6 +125,7 @@ webServer.register({ kind: 'prefix', path: '/api/maoying', handler: async (req, 
 - **Markdown 渲染**：零依赖渲染器（先整体转义再变换），章纲对照与世界观/科学设定描述不再裸显 md 源码；正文手稿仍走 pre。
 - **章节整页阅读**：替代右侧抽屉（侧边栏遮挡问题），返回按钮 + 章纲对照 + 五维 + 状态流转原位保留；阅读态隐藏 tab 条。
 - **小说设置 tab**（第 9 个）：project.yml 平键表单化编辑，`POST project-save` → `mutateProject` 逐键改写保行尾注释、缺键按模板补齐、phase/mode 越枚举与空书名 422。
+- **字号六档改百分比**（0.1.13）：档位从中文名（小/标准/大…）改为 100/110/120/130/140/150% 直读，旧 localStorage 档位值回落 100%。
 
 ## 5. 验收基线
 
