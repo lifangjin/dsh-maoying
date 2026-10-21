@@ -88,18 +88,27 @@ webServer.register({ kind: 'prefix', path: '/api/maoying', handler: async (req, 
 - 会话中栏全页 overlay：`html[data-dsh-maoying-active]` 驱动，`dsh-panel-activate` 事件与 mnemon/taskboard/ssh 等全页面板互斥，点侧栏会话行自动关闭；
 - 顶部工作区选择器（workspaces 路由取数，hasNovel 的排前；无 novel 工作区显示引导卡：一句 `maoying init` 提示 + 复制按钮）。
 
-八个 tab（顺序即默认排布）：
+九个 tab（顺序即默认排布，第 9 个为后续迭代新增）：
 
 1. **概览**：project 卡（书名大字 + 类型/篇幅/语言 pills + 阶段徽章 + 简介）；统计卡（总字数/章节数/状态分布条）；最近更新（chapters 按 mtime 前 5）；warnings 黄条。
-2. **章节**：表格（卷-章/标题/状态徽章/字数/梗概），状态筛选 pills；表格上方「按单写作」区块——有章纲且 status=pending 的章按序列出（章纲节选 + 状态徽章，共创模式的主工作清单）；行点击开抽屉：GET chapter 显示正文（只读，等宽滚动）+ 章纲对照栏（左右分栏或折叠段）+ 复制文件路径按钮 + 五维字段卡 + 状态流转按钮（当前态 → 下一态一键，pending→writing→review→accepted）。
+2. **章节**：表格（卷-章/标题/状态徽章/字数/梗概），状态筛选 pills；表格上方「按单写作」区块——有章纲且 status=pending 的章按序列出（章纲节选 + 状态徽章，共创模式的主工作清单）；行点击开整页阅读视图（0.1.12 起替代原右侧抽屉——fixed 侧弹层会被 DSH 侧边栏遮挡）：返回按钮 + GET chapter 正文（只读，等宽滚动）+ 章纲对照栏（左右分栏或折叠段）+ 复制文件路径按钮 + 五维字段卡 + 状态流转按钮（当前态 → 下一态一键，pending→writing→review→accepted）。
 3. **角色**：卡墙（姓名/role 徽章四色/年龄性别/性格一句/动机一行），点击看全卡（含 arc/markers/background）。
-4. **伏笔**：四列看板（埋设/推进/已回收/弃用），卡片含 priority 色点（high 红/normal 灰/low 淡）、`source: backfill` 的「回填」小徽章（账本回填来的条目，区别于写前规划）、埋设章→预期回收章、notes 悬浮；卡片按钮：推进到下一状态（planted→progressing→resolved；abandoned 只能从看板拖不动、按钮给「弃用」）。列头计数。
+4. **伏笔**：四列看板（埋设/推进/已回收/弃用），卡片含 priority 色点（high 红/normal 灰/low 淡）、`source: backfill` 的「回填」小徽章（账本回填来的条目，区别于写前规划）、埋设章→预期回收章、notes 全文直显（0.1.10 去掉两行截断）；卡片按钮：推进到下一状态（planted→progressing→resolved；abandoned 只能从看板拖不动、按钮给「弃用」）。列头计数。
 5. **关系图**：canvas 力导向图——节点=角色（radius 随出场无关、固定 18px，名字 label 下方），边=relations（intensity 1-5 → 线宽 1-4px，type 标在边中点 hover 显示 description）；拖拽节点、空白处滚轮缩放、双击复位；intensity 缺省 3。角色多于 30 个时只画与 relations 相连的节点，其余进「未入图」列表。
 6. **时间线**：垂直轴，importance 1-5 → 点大小/颜色深浅，year 左列右卡片。
 7. **设定**：world 按 category 分组列表 + science 三色标签（known 绿/extrapolation 黄/hypothesis 紫，标签下 references 链接列表）。
 8. **索引板**：clues 按 kind 分组（线索/红鲱鱼/推理/疑问，resolved 划线置灰）+ memories 按 category 分组（promise 类高亮）。
 
 状态徽章色（全局统一）：pending 灰 / writing 蓝 / review 橙 / accepted 绿；phase 七态沿用七色 pill。文案全中文、禁 emoji 图标（用 ui-primitives 图标或纯 CSS）。
+
+## 4.1 后续迭代记录（0.1.10 – 0.1.12）
+
+- **MaskPortal**：抽屉/弹层统一 portal 到 `document.body`——面板容器挂在宿主会话中栏，中栏 transform/overflow 会把 `position: fixed` 劫持成相对自身并连同裁剪（桌面端「点了没反应」实测病灶）；无 createPortal 的老宿主退回原地渲染。
+- **顶栏版本区**：当前版本号常驻；`update-check` 路由（模仿 dsh-paoding：npm registry → npmmirror → GitHub 三级源，1h 缓存 + 7 天 stale-if-error，全败静默）发现新版时亮「有新版 ↗」徽章。
+- **系统设置**：齿轮弹窗，字号五档（100/120/150/180/200%）——面板根与 portal 节点读同一 `--myt-zoom` 变量整体 zoom，localStorage 记忆。
+- **Markdown 渲染**：零依赖渲染器（先整体转义再变换），章纲对照与世界观/科学设定描述不再裸显 md 源码；正文手稿仍走 pre。
+- **章节整页阅读**：替代右侧抽屉（侧边栏遮挡问题），返回按钮 + 章纲对照 + 五维 + 状态流转原位保留；阅读态隐藏 tab 条。
+- **小说设置 tab**（第 9 个）：project.yml 平键表单化编辑，`POST project-save` → `mutateProject` 逐键改写保行尾注释、缺键按模板补齐、phase/mode 越枚举与空书名 422。
 
 ## 5. 验收基线
 
