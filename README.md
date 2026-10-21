@@ -121,6 +121,8 @@ maoying init [dir]     # 生成 novel/ 脚手架（默认 ./novel；已存在文
 maoying stats [dir]    # 逐章 CJK 字数、状态分布、当前 phase
 maoying index [dir]    # 从 volumes.yml + chapters/ 重建 index.yml（派生文件）
 maoying export [dir]   # 导出全书：--format md|txt|epub（默认 md），--out <目录> 改输出位置
+maoying brief [dir] <chapter>  # 组装单章写作卡（章纲+前章结尾+角色卡+活跃伏笔）；--out 落盘，缺省 stdout
+maoying check [dir]    # 静态体检（不调模型）：frontmatter/枚举/章号/伏笔引用/时间线年份/关系卡引用
 ```
 
 export 示例：
@@ -148,7 +150,7 @@ rm -rf "${DSH_HOME:-$HOME/.dsh}/skills/"maoying-*
 
 ## 兼容面
 
-插件启动时读宿主版本（`<home>/node_modules/@deepseek-ai/dsh/package.json`），按版本自动选择委派行形状——**宿主升级后重启即切换，无需重装插件**：
+插件启动时读宿主版本，按版本自动选择委派行形状——**宿主升级后重启即切换，无需重装插件**。版本探测是五级探针（argv[1] → 全 argv 扫描 → app.asar / desktop-runtime → Electron API → home 全局兜底），前四级锚定当前进程的真实宿主，`<home>/node_modules/@deepseek-ai/dsh/package.json` 那份 home 全局安装只做最后兜底（老 CLI 残留可能陈旧几个大版本）；每级读到了什么可查创作台面板的 `host-debug` 端点（路径已脱敏）：
 
 - **DSH 0.1.7 – 0.2.1-rc.1 → v1 内联形状**：5 个角色委派行直接内联 persona 与 toolFilter，托管块 1 条声明行。
 - **DSH 0.2.1-rc.2+ → v2 AgentPreset 形状**：该版本起 dsh-tool-subagent 拒绝内联 persona/toolFilter，插件改用 [presets/maoying/agent.cordis.v2.yml](presets/maoying/agent.cordis.v2.yml)——托管块写 6 条声明行（主编 preset + 大纲师/写手/审校/设定管理员/素材调研员 5 张角色 preset），主编委派行以 `agentPreset` 指向角色 preset，角色的工具面由 preset 里的实体工具行承载（审校只读、考据带联网检索）。

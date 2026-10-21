@@ -4,6 +4,7 @@
 #   title             伏笔一句话
 #   status            planted|progressing|resolved|abandoned
 #   priority          high|normal|low
+#   source            可选：plan|backfill（缺省 plan；backfill = 共创收稿从作者正文回填认领）
 #   planted_chapter   埋设章节号（必填）
 #   expected_resolve  预期回收章节号
 #   resolved_chapter  实际回收章节号（resolved 时必填）

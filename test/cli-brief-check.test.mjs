@@ -9,6 +9,9 @@
  *   - readOutline / listOutlines：同名章纲读取、章号序；
  *   - buildBrief：全料样例、缺章纲降级、第一章开篇、三种章节参数写法等价、硬失败；
  *   - checkProject：逐类问题各一条 + 全净样例零问题；
+ *   - checkProject 规则细化：expected_resolve 排期承诺口径（不查存在性）、
+ *     resolved 必填兑现章且不早于埋设章、num 字符串归一、BOM 容错、
+ *     重复键提醒、杂散章节文件沉底、解析层杂项（注释剥离/类型漂移/countCjk）；
  *   - CLI brief / check：退出码、输出、--out 落盘与 stdout 一致；
  *   - 回归：init / stats / index / export 照常工作。
  */
@@ -16,7 +19,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { spawnSync } from 'node:child_process'
-import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -24,7 +27,22 @@ import { fileURLToPath } from 'node:url'
 const PLUGIN_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const BIN = path.join(PLUGIN_ROOT, 'bin', 'maoying.mjs')
 
-const { buildBrief, checkProject, countCjk, listOutlines, readOutline } = await import('../lib/novel-parse.mjs')
+const {
+  buildBrief,
+  CHAPTER_STATUSES,
+  checkProject,
+  collectChapters,
+  countCjk,
+  flowScalar,
+  listOutlines,
+  parseChapterFile,
+  parseFlatYamlArray,
+  readOutline,
+  readTextOrNull,
+  splitFrontmatter,
+  splitParagraphs,
+  stripInlineComment,
+} = await import('../lib/novel-parse.mjs')
 
 // ── 工具 ────────────────────────────────────────────────────────────────────
 
@@ -187,7 +205,7 @@ const CLEAN_FORESHADOWS = `- id: fs-001
   status: planted
   priority: high
   planted_chapter: v01-c001
-  expected_resolve: v01-c003
+  expected_resolve: v01-c004
   resolved_chapter: ""
   notes: 废驿对峙时示人，验明旧部身份
 - id: fs-002
@@ -383,6 +401,14 @@ function buildBadSample(dir) {
   )
 }
 
+/** 最小可检项目：两章 + 一份 foreshadows.yml（其余账本缺省按空），check 规则单点测试用。 */
+function minimalCheckProject(dir, foreshadowsYaml) {
+  write(path.join(dir, 'chapters/v01-c001.md'), chapterFm({ num: 1, title: '开局章' }) + '正文。\n')
+  write(path.join(dir, 'chapters/v01-c002.md'), chapterFm({ num: 2, title: '接续章' }) + '正文。\n')
+  write(path.join(dir, 'foreshadows.yml'), foreshadowsYaml)
+  return checkProject(dir)
+}
+
 // ── 解析层：章纲 ────────────────────────────────────────────────────────────
 
 test('readOutline / listOutlines：同名章纲读取与章号序', () => {
@@ -401,6 +427,76 @@ test('readOutline / listOutlines：同名章纲读取与章号序', () => {
     // 列表按章号升序
     assert.deepEqual(listOutlines(dir).map((o) => o.chapter), ['v01-c002', 'v01-c003'])
     assert.deepEqual(listOutlines(path.join(dir, 'no-such')), [])
+  })
+})
+
+test('解析层杂项：转义引号注释、类型漂移落值、扩展B计数、杂散章沉底、重复键提醒、空条目过滤', () => {
+  // stripInlineComment：\\" 反斜杠成对（转义的是反斜杠自己），引号正常收尾、注释剥得掉
+  assert.equal(stripInlineComment('"a\\\\" # 注释'), '"a\\\\" ')
+  // 单个反斜杠才构成转义引号：注释原样保留
+  assert.equal(stripInlineComment('"a\\" # 不是注释'), '"a\\" # 不是注释')
+  // flowScalar：裸写会被 YAML 读成数字/布尔的串按 JSON 引号落值，普通中文保持裸写
+  assert.equal(flowScalar('1984'), '"1984"')
+  assert.equal(flowScalar('true'), '"true"')
+  assert.equal(flowScalar('3.14'), '"3.14"')
+  assert.equal(flowScalar('雪夜来客'), '雪夜来客')
+  // countCjk：扩展 B 区生僻字（𠮷 = U+20BB7）计入
+  assert.equal(countCjk('𠮷野家'), 3)
+  // 解析器对 `-\n- foo` 保持宽容（空对象条目原样产出），过滤发生在 readYamlArray 侧
+  assert.deepEqual(parseFlatYamlArray('-\n- foo'), [{}, 'foo'])
+  // splitParagraphs / readTextOrNull 导出可用（bin 侧 bodyParagraphs / readTextOrNull 同语义）
+  assert.deepEqual(splitParagraphs('第一段。\n\n第二段一行\n接着写。'), ['第一段。', '第二段一行接着写。'])
+  assert.ok(readTextOrNull(BIN) !== null)
+  assert.equal(readTextOrNull(path.join(tmpdir(), 'maoying-不存在的文件')), null)
+  assert.deepEqual(CHAPTER_STATUSES.map(([s]) => s), ['pending', 'writing', 'review', 'accepted'])
+
+  withWorkspace('parse-misc', (dir) => {
+    // 杂散 .md（文件名不合规范）沉底，不再混在正常章之前
+    write(path.join(dir, 'chapters/0-notes.md'), '随手记，不是章节。\n')
+    write(path.join(dir, 'chapters/v01-c001.md'), chapterFm({ num: 1 }) + '正文。\n')
+    write(path.join(dir, 'chapters/v01-c002.md'), chapterFm({ num: 2 }) + '正文。\n')
+    assert.deepEqual(collectChapters(dir).map((c) => c.stem), ['v01-c001', 'v01-c002', '0-notes'])
+    // 章节 frontmatter 重复键：last-wins 语义不变，check 给 warn 提醒
+    write(
+      path.join(dir, 'chapters/v01-c003.md'),
+      [
+        '---',
+        'volume: v01',
+        'num: 3',
+        'title: 前面的标题',
+        'title: 后面的标题',
+        'status: pending',
+        'summary: 有梗概',
+        'cognitive_frame: 有',
+        'emotional_anchor: 有',
+        'world_texture: 有',
+        'suspense: 有',
+        'interpersonal_tension: 有',
+        '---',
+        '',
+        '正文。',
+        '',
+      ].join('\n'),
+    )
+    const dup = checkProject(dir)
+    assert.ok(dup.problems.some((p) => p.level === 'warn' && p.file === 'chapters/v01-c003.md' && p.message.includes('重复键')))
+    assert.equal(collectChapters(dir).find((c) => c.stem === 'v01-c003').title, '后面的标题')
+    // `-` 空条目不混进账本计数（readYamlArray 侧过滤，这里数出来应是 1 条不是 2 条）
+    write(
+      path.join(dir, 'foreshadows.yml'),
+      [
+        '-',
+        '- id: fs-777',
+        '  title: 空条目后面的伏笔',
+        '  status: planted',
+        '  priority: low',
+        '  planted_chapter: v01-c001',
+        '  expected_resolve: ""',
+        '  resolved_chapter: ""',
+        '',
+      ].join('\n'),
+    )
+    assert.equal(checkProject(dir).summary.foreshadows, 1)
   })
 })
 
@@ -615,6 +711,109 @@ test('checkProject：逐类坏样例各报一条，计数自洽', () => {
   })
 })
 
+test('checkProject：expected_resolve 按排期承诺口径——指向未写章节不报错', () => {
+  withWorkspace('check-expected-resolve', (dir) => {
+    const fm = (expected, status = 'planted') =>
+      [
+        '- id: fs-100',
+        '  title: 玉佩下落',
+        `  status: ${status}`,
+        '  priority: high',
+        '  planted_chapter: v01-c001',
+        `  expected_resolve: ${expected}`,
+        '  resolved_chapter: ""',
+        '',
+      ].join('\n')
+    // ① 排期到尚未写出的章（官方模板的常态）——零问题
+    const future = minimalCheckProject(path.join(dir, 'future'), fm('v01-c099'))
+    assert.equal(future.ok, true)
+    assert.deepEqual(future.problems, [])
+    // ② 反向提醒：排期目标已写出却还停在 planted——warn 不 error
+    const stale = minimalCheckProject(path.join(dir, 'stale'), fm('v01-c002'))
+    assert.equal(stale.ok, true)
+    assert.equal(stale.problems.length, 1)
+    assert.equal(stale.problems[0].level, 'warn')
+    assert.ok(stale.problems[0].message.includes('planted'))
+    // ③ 格式不合法（解析不出卷/章）仍要报 error
+    const malformed = minimalCheckProject(path.join(dir, 'malformed'), fm('废驿对峙'))
+    assert.equal(malformed.ok, false)
+    assert.ok(malformed.problems.some((p) => p.level === 'error' && p.message.includes('expected_resolve')))
+  })
+})
+
+test('checkProject：resolved 必填 resolved_chapter，且不得早于 planted_chapter', () => {
+  withWorkspace('check-resolved-rules', (dir) => {
+    const fm = (planted, resolved) =>
+      [
+        '- id: fs-200',
+        '  title: 血迹来历',
+        '  status: resolved',
+        '  priority: normal',
+        `  planted_chapter: ${planted}`,
+        '  expected_resolve: ""',
+        `  resolved_chapter: ${resolved}`,
+        '',
+      ].join('\n')
+    // 回收缺兑现章 → error
+    const missing = minimalCheckProject(path.join(dir, 'missing'), fm('v01-c001', '""'))
+    assert.equal(missing.ok, false)
+    assert.ok(missing.problems.some((p) => p.level === 'error' && p.message.includes('resolved_chapter')))
+    // 回收早于埋设 → error（两章都存在，排除存在性干扰）
+    const reversed = minimalCheckProject(path.join(dir, 'reversed'), fm('v01-c002', 'v01-c001'))
+    assert.equal(reversed.ok, false)
+    assert.ok(reversed.problems.some((p) => p.level === 'error' && p.message.includes('早于')))
+    // 正常回收零问题
+    const fine = minimalCheckProject(path.join(dir, 'fine'), fm('v01-c001', 'v01-c002'))
+    assert.equal(fine.ok, true)
+    assert.deepEqual(fine.problems, [])
+  })
+})
+
+test('checkProject：num 手写成单引号字符串与文件名章号不再误报不一致', () => {
+  withWorkspace('check-num-string', (dir) => {
+    write(
+      path.join(dir, 'chapters/v01-c003.md'),
+      [
+        '---',
+        'volume: v01',
+        "num: '3'",
+        'title: 单引号章号',
+        'status: pending',
+        'summary: 有梗概',
+        'cognitive_frame: 有',
+        'emotional_anchor: 有',
+        'world_texture: 有',
+        'suspense: 有',
+        'interpersonal_tension: 有',
+        '---',
+        '',
+        '正文。',
+        '',
+      ].join('\n'),
+    )
+    const result = checkProject(dir)
+    assert.deepEqual(result.problems, [])
+  })
+})
+
+test('BOM 文件：frontmatter 不因 \\uFEFF 静默失效', () => {
+  withWorkspace('bom-frontmatter', (dir) => {
+    const text = '\uFEFF' + chapterFm({ num: 7, title: '带BOM的章' }) + '正文。\n'
+    // 解析层：meta 正常解析，body 不带 BOM
+    const parsed = parseChapterFile(text)
+    assert.equal(parsed.meta.title, '带BOM的章')
+    assert.equal(parsed.meta.num, 7)
+    assert.ok(parsed.body.startsWith('正文'))
+    // fence.index 契约不变：raw 仍是原文 text.slice(index, index + raw.length)（写侧行级手术依赖）
+    const fence = splitFrontmatter(text)
+    assert.equal(text.slice(fence.index, fence.index + fence.raw.length), fence.raw)
+    // 落盘后走 check：带 BOM 的章节不再被误报缺必填键
+    write(path.join(dir, 'chapters/v01-c007.md'), text)
+    const result = checkProject(dir)
+    assert.deepEqual(result.problems, [])
+  })
+})
+
 // ── CLI：check ──────────────────────────────────────────────────────────────
 
 test('CLI check：有 error 退出码 1，全净退出码 0', () => {
@@ -674,5 +873,64 @@ test('回归：init / stats / index / export 对样例项目照常工作', () =>
     const exp = runCli(['export', proj, '--format', 'txt', '--out', exportOut])
     assert.equal(exp.status, 0)
     assert.ok(exp.stdout.includes('导出完成'))
+  })
+})
+
+// ── export 格式矩阵（docs/design.md §8：md / txt / epub，HTML 从未实现）──────
+
+test('export 默认（无 --format）：md 落到 <dir>/exports/', () => {
+  withWorkspace('export-default', (dir) => {
+    const proj = path.join(dir, 'proj')
+    buildCleanSample(proj)
+    const r = runCli(['export', proj])
+    assert.equal(r.status, 0, r.stderr)
+    assert.ok(r.stdout.includes('格式 md'), `stdout 应带所选格式：${r.stdout}`)
+    const produced = readdirSync(path.join(proj, 'exports'))
+    assert.equal(produced.length, 1)
+    assert.ok(produced[0].endsWith('.md'), `默认产物应为 .md：${produced[0]}`)
+  })
+})
+
+test('export --format epub：产物存在且头两字节为 PK（zip 魔数）', () => {
+  withWorkspace('export-epub', (dir) => {
+    const proj = path.join(dir, 'proj')
+    buildCleanSample(proj)
+    const r = runCli(['export', proj, '--format', 'epub'])
+    assert.equal(r.status, 0, r.stderr)
+    const [file] = readdirSync(path.join(proj, 'exports'))
+    assert.ok(file && file.endsWith('.epub'), `应有 .epub 产物：${file}`)
+    const head = readFileSync(path.join(proj, 'exports', file)).subarray(0, 2)
+    assert.equal(head.toString('latin1'), 'PK', `epub 应以 zip 魔数 PK 开头，实得 ${head.toString('hex')}`)
+  })
+})
+
+test('export 未知格式：exit 1，stderr 点名格式与合法取值（html 从未实现）', () => {
+  withWorkspace('export-badfmt', (dir) => {
+    const proj = path.join(dir, 'proj')
+    buildCleanSample(proj)
+    const r = runCli(['export', proj, '--format', 'html'])
+    assert.equal(r.status, 1)
+    assert.ok(r.stderr.includes('未知导出格式'), `stderr 应点名未知格式：${r.stderr}`)
+    assert.ok(r.stderr.includes('html') && r.stderr.includes('md'), 'stderr 应复述格式名与合法取值')
+  })
+})
+
+test('export --out 自定义目录：产物落在指定目录（同名自动改序号，不覆盖）', () => {
+  withWorkspace('export-out', (dir) => {
+    const proj = path.join(dir, 'proj')
+    buildCleanSample(proj)
+    const outDir = path.join(dir, '自定义导出')
+    const r = runCli(['export', proj, '--format', 'txt', '--out', outDir])
+    assert.equal(r.status, 0, r.stderr)
+    const m = /导出完成：(.+)/.exec(r.stdout)
+    assert.ok(m, `stdout 应带产物绝对路径：${r.stdout}`)
+    const produced = m[1].trim()
+    assert.ok(path.dirname(produced) === path.resolve(outDir), `产物应落在 --out 目录：${produced}`)
+    assert.ok(existsSync(produced))
+    // 再跑一次同名导出：自动加序号 -2，绝不静默覆盖
+    const again = runCli(['export', proj, '--format', 'txt', '--out', outDir])
+    assert.equal(again.status, 0)
+    assert.ok(again.stderr.includes('-2'), `重复导出应提示改写去向：${again.stderr}`)
+    assert.equal(readdirSync(outDir).length, 2)
   })
 })

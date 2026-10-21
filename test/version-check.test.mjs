@@ -13,14 +13,26 @@ test('compareVersions：核心段逐位比较、缺段补 0、预发布后缀低
   assert.equal(compareVersions('0.2.0-rc.1', '0.2.0-rc.2'), -1)
   assert.equal(compareVersions('0.2.0', '0.2.0-rc.1'), 1)
   assert.equal(compareVersions('0.1.9', '0.1.9'), 0)
+  // 预发布段按 '.' 切段逐段数值比较：字符串序会把 rc.10 排在 rc.2 前面
+  assert.equal(compareVersions('0.2.0-rc.2', '0.2.0-rc.10'), -1)
+  assert.equal(compareVersions('0.2.0-rc.10', '0.2.0-rc.2'), 1)
+  // 预发布段段数不齐补空：空段 < 非空段
+  assert.equal(compareVersions('0.2.0-rc.1', '0.2.0-rc.1.0'), -1)
+  // 核心段非纯数字（parseInt 前缀解析曾把 '12abc' 当 12）一律归 0
+  assert.equal(compareVersions('12abc', '0.0.0'), 0)
+  assert.equal(compareVersions('1.2abc.3', '1.0.3'), 0)
 })
 
 test('getVersionInfo：registry 命中 → updateAvailable 判定正确', async () => {
   const calls = []
   const fetchImpl = async (url) => {
-    calls.push(String(url))
-    if (String(url).includes('registry.npmjs.org')) return json({ version: '9.9.9' })
-    throw new Error('不应走到更低级源')
+    const u = String(url)
+    calls.push(u)
+    if (u.includes('registry.npmjs.org')) return json({ version: '9.9.9' })
+    // npmmirror 与 registry 并行竞速（见 lib/version.mjs raceLatestFromNpm），
+    // 这里要给可落定的失败响应而非 throw，避免干扰并行窗口
+    if (u.includes('registry.npmmirror.com')) return { ok: false, status: 503, json: async () => ({}) }
+    throw new Error('不应走到 GitHub 兜底')
   }
   const info = await getVersionInfo({
     fetchImpl, now: 1_000_000,
@@ -29,10 +41,17 @@ test('getVersionInfo：registry 命中 → updateAvailable 判定正确', async 
   assert.equal(info.source, 'npm')
   assert.equal(info.latest, 'v9.9.9')
   assert.equal(info.error, null)
-  assert.equal(calls.length, 1, 'registry 命中后不得再请求镜像 / GitHub')
+  assert.ok(calls.every((u) => !u.includes('api.github.com')), 'registry 命中后不得再请求 GitHub 兜底')
+  assert.equal(calls.length, 2, 'npm 双源并行竞速：registry + npmmirror 各请求一次')
 })
 
 test('getVersionInfo：registry 挂 → 镜像顶上；全挂 → lastGood 复用，超窗降级', async () => {
+  // 顺序耦合声明：本用例四个步骤共享 lib/version.mjs 的模块级缓存（灌入成功
+  // 结果 → TTL 内复用 → TTL 过走 lastGood → 超 7 天降级），且 node:test 同
+  // 文件用例按声明顺序串行执行——各步 now 时间戳（1e6 → +1s → +2h → +8d）
+  // 必须层层递进、不可调换，也不可与文件内其它 getVersionInfo 用例交换顺序
+  //（后置用例的时间戳更大，先执行会把缓存推到「未来」，本用例的 TTL /
+  // lastGood 判定将全部失真）。拆分本用例前先想清楚这一点。
   const alwaysFail = async () => { throw new Error('net down') }
   // 先灌一份成功结果进缓存（用 registry 命中源）
   const good = await getVersionInfo({
@@ -84,4 +103,33 @@ test('getVersionInfo：镜像兜底与 GitHub 兜底', async () => {
   assert.equal(gh.source, 'github')
   assert.equal(gh.latest, 'v9.9.7')
   assert.equal(gh.releaseUrl, 'https://github.com/lifangjin/dsh-maoying/releases/tag/v9.9.7')
+})
+
+test('getVersionInfo：并发调用 in-flight 去重，且返回浅拷贝不污染缓存', async () => {
+  // 本用例必须排在本文件最后：它把缓存时间戳推到 4e10（远超前面所有用例），
+  // 若提前执行会把其它用例的 TTL / lastGood 判定推向「未来」而失真（见上方
+  // 顺序耦合声明）。此处时间戳取 4e10 刻意绕开前一用例（3e10）的缓存窗口，
+  // 逼出真实的并发检测而非 TTL 复用。
+  let registryCalls = 0
+  const fetchImpl = async (url) => {
+    const u = String(url)
+    if (u.includes('registry.npmjs.org')) {
+      registryCalls += 1
+      return json({ version: '8.8.8' })
+    }
+    if (u.includes('registry.npmmirror.com')) return { ok: false, status: 503, json: async () => ({}) }
+    throw new Error('不应走到 GitHub 兜底')
+  }
+  const [a, b] = await Promise.all([
+    getVersionInfo({ fetchImpl, now: 40_000_000_000 }),
+    getVersionInfo({ fetchImpl, now: 40_000_000_000 }),
+  ])
+  assert.equal(a.source, 'npm')
+  assert.equal(b.source, 'npm')
+  assert.equal(registryCalls, 1, '并发调用必须经 in-flight 去重，只发一次 registry 请求')
+  assert.notEqual(a, b, '并发调用各自拿到浅拷贝，不得共享同一对象引用')
+  // 调用方原地改写返回对象，不得污染缓存里待 lastGood 复用的结果
+  b.latest = 'polluted'
+  const cached = await getVersionInfo({ fetchImpl, now: 40_000_000_000 + 1000 }) // TTL 内复用缓存
+  assert.equal(cached.latest, 'v8.8.8', '缓存结果不受调用方原地改写影响')
 })

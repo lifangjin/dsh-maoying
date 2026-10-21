@@ -353,7 +353,8 @@
                   tailChars: 1024
     # ── 角色 preset：审校（one-shot，只读）────────────────────────────────────
     # persona 逐字复制 v1 delegation-review；tool-fs 收成 read/readImage 两开、
-    # write/edit 关闭——v1 只读 toolFilter 的实体化；无 write/edit/bash/skill。
+    # write/edit 关闭——v1 只读 toolFilter 的实体化；无 write/edit/bash；带
+    # skill 仅为加载审校清单等只读方法论技能，只读不改不变。
     - id: preset-maoying-review
       name: "@deepseek-ai/dsh-agent-preset"
       config:
@@ -389,6 +390,10 @@
             name: "@deepseek-ai/dsh-tool-fs-search"
             config:
               sampleOverCapGlobResults: false
+          - id: skill-filesystem
+            name: "@deepseek-ai/dsh-skill-filesystem"
+          - id: tool-skill
+            name: "@deepseek-ai/dsh-tool-skill"
           - id: tool-ask-user
             name: "@deepseek-ai/dsh-tool-ask-user"
           - id: tool-todo

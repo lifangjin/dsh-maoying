@@ -37,16 +37,31 @@ webServer.register({ kind: 'prefix', path: '/api/maoying', handler: async (req, 
 
 | 路由 | 方法 | 入参 | 出参 |
 |---|---|---|---|
-| `client.css` | GET | — | text/css（lib/base.css 现读） |
+| `client.css` | GET | — | text/css（lib/base.css 现读，no-cache） |
+| `update-check` | GET | — | `{ ok, current, latest, updateAvailable, releaseUrl, checkedAt, error, source }`——新版检测（npm registry → npmmirror → GitHub 三级源，1h 缓存 + 7 天 stale-if-error，全败静默降级为 latest=null / error 非空） |
+| `host-debug` | GET | — | `{ ok, hostVersion, trace, shape, registry, runtime }`——现场诊断（见下节） |
 | `workspaces` | GET | — | `{ ok, workspaces: [{ path, name, hasNovel }] }`——workspaceRegistry.list() 逐根探测 `<root>/novel/project.yml` |
 | `state` | GET | `path=<root>` | 全量快照（见 §3 契约） |
 | `chapter` | GET | `path`, `file`（chapters/ 下文件名） | `{ ok, file, frontmatter, body, outline }`——正文全文 + 对应章纲（`{ file, words, body }`，outlines/ 无对应文件时 null），章节抽屉用 |
 | `chapter-status` | POST | `{ path, file, status }` | `{ ok }`——frontmatter status 行原地替换；status 必须 ∈ pending/writing/review/accepted |
 | `foreshadow-status` | POST | `{ path, id, status }` | `{ ok }`——foreshadows.yml 对应条目 status 行替换；∈ planted/progressing/resolved/abandoned |
 | `phase` | POST | `{ path, phase }` | `{ ok }`——project.yml phase 行替换；七态枚举 |
+| `project-save` | POST | `{ path, values }`（8 平键，title/author/genre/length/language/phase/mode/description） | `{ ok }`——mutateProject 逐键改写保行尾注释、缺键按模板补齐；phase/mode 越枚举与空书名 422 |
 | `rebuild-index` | POST | `{ path }` | `{ ok, chapters }`——照 CLI index 同一逻辑重建 index.yml |
 
-写操作全部「行级原地替换」：只在 frontmatter/目标 yml 的对应行上做字符串手术，写前读、写后校验（替换计数 ≠1 即 409 拒写并报错），不做整文件重排——把对 git diff 的扰动压到最小，也与 agent 的写法兼容。
+共 11 条。写操作全部「行级原地替换」：只在 frontmatter/目标 yml 的对应行上做字符串手术，写前读、写后校验（替换计数 ≠1 即 409 拒写并报错），不做整文件重排——把对 git diff 的扰动压到最小，也与 agent 的写法兼容。
+
+### host-debug 端点（现场诊断）
+
+用途：面板「有新版不显示 / 形态判定可疑」时现场定位宿主版本读到的是哪一份。响应：
+
+- `hostVersion`：五级探针（argv[1] → 全 argv 扫描 → app.asar / desktop-runtime → Electron API → home 全局兜底）命中的版本；全落空为 null。
+- `trace`：每级探针一条轨迹 `{ probe, hit, via?, note? }`，能看到每级看到了什么、为什么落空。
+- `shape`：托管块形态判定（v1/v2，读不到宿主版本保守 v1）。
+- `registry`：预设注册表内窥（逐 preset 的 broken 激活诊断，尽力而为）。
+- `runtime`：argv / execPath / cwd / electron / node。
+
+围栏与脱敏：与所有路由同一信任围栏（回环 + 可信 Host）；出口统一 sanitizeDeep——trace.via、runtime.argv / execPath / cwd 等本机绝对路径一律换 `~`，诊断信息照给、路径不出门。
 
 ## 3. state 快照契约（前后端共同遵守，字段名冻结）
 
@@ -56,7 +71,7 @@ webServer.register({ kind: 'prefix', path: '/api/maoying', handler: async (req, 
   "root": "<workspace root>",
   "novelDir": "<root>/novel",
   "found": true,                          // false 时其余字段缺省，面板显示「未初始化」引导
-  "project": { "title","author","genre","length","language","phase","description" },
+  "project": { "title","author","genre","length","language","phase","mode","description" },  // mode: ai-draft|co-write|author-draft（五期）
   "chapters": [{ "file","volume","num","title","status","words","summary",
                  "cognitive_frame","emotional_anchor","world_texture",
                  "suspense","interpersonal_tension" }],     // 按 volume,num 升序；words 为 CJK 计数
@@ -113,5 +128,5 @@ webServer.register({ kind: 'prefix', path: '/api/maoying', handler: async (req, 
 ## 5. 验收基线
 
 - Node 侧：临时 workspace（/tmp）+ 假 workspaceRegistry 不行——路由从 ctx.workspaceRegistry 取；单测直接 import lib/panel-core.mjs 的函数（parseStateSnapshot / mutateChapterStatus / mutateForeshadowStatus / mutatePhase / rebuildIndex）跑断言；路由层用 node 起一个最小 ctx 假件（webServer.register 收集 handler，workspaceRegistry 返回临时 root）模拟请求验证围栏 403 / 状态流转 / 防穿越。
-- 浏览器侧：`node --check` 不适用（browser bundle 用 var/require factory 语法）——语法用 `node --input-type=module -e "await import('...')"` 不可行；改用 esbuild？零依赖约束下用「提取 factory 体 + new Function 包裹」的冒烟脚本验证可解析不执行 DOM。至少：括号配平检查 + 手工浏览器验收由用户重启后做。
+- 浏览器侧：`node --check` 不适用（browser bundle 用 var/require factory 语法）——冒烟脚本 `npm run smoke`（scripts/smoke-client.mjs，零依赖）已落地：new Function 包裹整份源码做编译检查 → stub window/document 求值截获 `__ModuleLoader__.load` → factory 传 react/UI 原语 stub 求值，断言导出面 `{ inject: ["slots"], apply }` 与 slots 注入 / disposer 折返语义。CI（Node 18/20/22 矩阵）与 `npm test` 同跑；真浏览器验收仍由用户重启后做。
 - 不写死任何真实路径；测试全在 /tmp；真实 ~/.dsh 不碰。

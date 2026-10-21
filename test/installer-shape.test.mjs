@@ -10,6 +10,9 @@
  *     测试同款做法）；JSON 回退形态（yaml 不可用）两种形状照旧可解析；
  *   · 回归：yaml 缺席 → partial（yaml-unavailable），补上 yaml 重跑自愈写块；
  *     ok 路径零 warn（warn 只留给失败）。
+ *
+ * /tmp/yamlcheck staging 缺席时（干净 CI / 新机器），依赖借包的用例一律优雅
+ * skip（对照 composition.test.mjs 的写法），绝不硬失败；搭法见 AGENTS.md。
  */
 
 import test from 'node:test'
@@ -30,6 +33,14 @@ const { MANAGED_BEGIN, MANAGED_END, composeManagedRows, ensurePresetInstalled, h
 // ── 假 home 与假宿主版本 ─────────────────────────────────────────────────────
 
 const YAML_STAGING = '/tmp/yamlcheck/node_modules/yaml'
+
+/** staging 缺席（干净 CI / 新机器）探测一次：依赖借包的用例据此优雅 skip，不硬失败。 */
+const HAS_YAML_STAGING = existsSync(YAML_STAGING)
+
+/** 对照 test/composition.test.mjs 的写法：staging 缺席 → skip（搭法见 AGENTS.md）。 */
+function skipWithoutYamlStaging(t) {
+  if (!HAS_YAML_STAGING) t.skip('本机没有 /tmp/yamlcheck 的 yaml 包（npm install --no-save --prefix /tmp/yamlcheck yaml@2 可补）')
+}
 
 function makeLogger() {
   const lines = { info: [], warn: [] }
@@ -97,7 +108,8 @@ const yamlOf = (home) => createRequire(path.join(home, 'node_modules', 'package.
 
 // ── 版本矩阵 ─────────────────────────────────────────────────────────────────
 
-test('宿主 0.2.0-rc.2 → v1：托管块 1 行，委派行内联 persona + toolFilter，无 agentPreset', () => {
+test('宿主 0.2.0-rc.2 → v1：托管块 1 行，委派行内联 persona + toolFilter，无 agentPreset', (t) => {
+  skipWithoutYamlStaging(t)
   const home = makeFakeHome({ hostVersion: '0.2.0-rc.2' })
   withHome(home, () => {
     const { lines, logger } = makeLogger()
@@ -122,7 +134,8 @@ test('宿主 0.2.0-rc.2 → v1：托管块 1 行，委派行内联 persona + too
   })
 })
 
-test('宿主 0.2.1-rc.2 / 0.2.1 / 0.3.0 → v2：托管块 6 行 preset，委派行带 agentPreset 且无 persona/toolFilter', () => {
+test('宿主 0.2.1-rc.2 / 0.2.1 / 0.3.0 → v2：托管块 6 行 preset，委派行带 agentPreset 且无 persona/toolFilter', (t) => {
+  skipWithoutYamlStaging(t)
   for (const version of ['0.2.1-rc.2', '0.2.1', '0.3.0']) {
     const home = makeFakeHome({ hostVersion: version })
     withHome(home, () => {
@@ -150,7 +163,8 @@ test('宿主 0.2.1-rc.2 / 0.2.1 / 0.3.0 → v2：托管块 6 行 preset，委派
   }
 })
 
-test('宿主 0.2.1-rc.1 → v1；版本读不到 → 保守侧 v1', () => {
+test('宿主 0.2.1-rc.1 → v1；版本读不到 → 保守侧 v1', (t) => {
+  skipWithoutYamlStaging(t)
   for (const version of ['0.2.1-rc.1', null]) {
     const home = makeFakeHome({ hostVersion: version })
     withHome(home, () => {
@@ -221,7 +235,8 @@ test('asarReadJson（经 readHostVersion 的 asar 探针）：块对齐位移的
   }
 })
 
-test('composeManagedRows：v2 本地插件名换 file:// 绝对地址，tool-todo 带 allowParallelInProgress', () => {
+test('composeManagedRows：v2 本地插件名换 file:// 绝对地址，tool-todo 带 allowParallelInProgress', (t) => {
+  skipWithoutYamlStaging(t)
   const home = makeFakeHome({ hostVersion: '0.2.1-rc.2' })
   const composed = composeManagedRows(home, console)
   assert.ok(Array.isArray(composed.rows))
@@ -254,7 +269,8 @@ test('hostRejectsInlineDelegation 边界：0.2.1-rc.2 起为真，rc.1 与正式
 
 // ── 同一 home 升降级：整块替换 + 块外内容逐字节保留 ─────────────────────────
 
-test('同一 home 宿主升降级：托管块整块切换形状，块外用户内容逐字节保留', () => {
+test('同一 home 宿主升降级：托管块整块切换形状，块外用户内容逐字节保留', (t) => {
+  skipWithoutYamlStaging(t)
   const home = makeFakeHome({ hostVersion: '0.2.0-rc.2' })
   withHome(home, () => {
     const yaml = yamlOf(home)
@@ -355,7 +371,8 @@ test('两种形态托管块产物都过 YAML 解析；JSON 回退单行两种形
 
 // ── 回归：yaml 缺席 partial、补上自愈；blockAction 与 reason 语义 ────────────
 
-test('yaml 缺席 → partial（yaml-unavailable）只落文件；宿主重启（子进程重跑）自愈写块', () => {
+test('yaml 缺席 → partial（yaml-unavailable）只落文件；宿主重启（子进程重跑）自愈写块', (t) => {
+  skipWithoutYamlStaging(t) // 自愈段要往假 home 补 yaml 包，staging 缺席跑不了
   const home = makeFakeHome({ hostVersion: '0.2.1-rc.2', withYaml: false })
   withHome(home, () => {
     const { lines, logger } = makeLogger()

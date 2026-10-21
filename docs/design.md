@@ -27,7 +27,7 @@ dsh-maoying/
     agent.cordis.yml      #   完整组合：主编人设 + 5 角色委派 + 工具行
     restrict.mjs          #   主编工具面白名单（system-prompt/assemble 瀑布）
     delegation-labels.mjs #   委派标签带角色显示名（tools/pre-execute 瀑布）
-  bin/maoying.mjs         # CLI：init / stats / index
+  bin/maoying.mjs         # CLI：init / stats / index / export / brief / check
   templates/novel/        # init 脚手架模板
   docs/                   # design.md（本文）、spec.md（数据规范）
 ```
@@ -52,7 +52,7 @@ dsh-maoying/
              plugins: <agent.cordis.yml 解析后的完整数组>
      ```
 
-   - 全程幂等：标记块已存在且版本一致则跳过；不一致则整块替换。YAML 解析/序列化用 `yaml` npm 包（dependencies 声明）。
+   - 全程幂等：标记块已存在且版本一致则跳过；不一致则整块替换。YAML 解析/序列化运行时从 dsh home 惰性借宿主自带的 `yaml` 包（lib/yaml-loader.mjs 多级探针），借不到回退内置极简解析（JSON 单行回退同样合法 YAML）——仓库零 npm 依赖，dependencies 恒为空。
    - 按宿主版本自动选委派行形状：≥0.2.1-rc.2 写 v2 AgentPreset 六行块（agent.cordis.v2.yml），否则写 v1 内联单行块；宿主升降级重启即整块切换，不再需要任何降级提示（形态依据见 §8，支持面见 §6）。
 3. 卸载 `dsh plugin remove dsh-maoying` 后：bundle 行消失，托管块与 .agent-presets/maoying/ 需手动删（README 写明两条 rm 命令）。
 
@@ -73,7 +73,7 @@ dsh-maoying/
 | 上下文注入（全量角色+章节+伏笔） | 改为按需读：主编先读 index.yml 概览，写到哪章读哪章的上下文（前章结尾+该章大纲+出场角色卡+活跃伏笔） | 主编人设纪律 |
 | AI 工具集 function calling | 天然消失（agent 直接用文件工具） | DSH 架构红利 |
 | 一致性检查（冲突/时间线/伏笔/设定） | review 角色（审校）：四维扫描 + 审稿清单 | 委派角色 |
-| 导出 EPUB/HTML/MD/TXT | **二期**（一期只留 CLI stats/index） | — |
+| 导出 EPUB/MD/TXT | **已交付**：`maoying export`（见 §8）；HTML 从未规划 | CLI |
 | Token 用量统计 | 无需（DSH 自带） | — |
 | Web 管理面板 | **三期** | — |
 | 素材考据调研 | **research 角色**：web 检索历史/地理/专业素材，笔记落 novel/research/ | 委派角色（DSH 差异化优势） |
@@ -83,7 +83,7 @@ dsh-maoying/
 ```
 novel/
   README.md            # 数据规范速查（init 时从模板生成；主编不确定格式时读它）
-  project.yml          # title/author/genre/length/language/phase/description
+  project.yml          # title/author/genre/length/language/phase/mode/description
   index.yml            # 派生概览（maoying index 重建；主编每次开工先读）
   volumes.yml          # - {id: v01, title, summary, chapters: "001-020"}
   chapters/
@@ -105,7 +105,7 @@ novel/
   clue-board.yml       # - {kind: clue|red-herring|deduction|question, content,
                        #    related_chapter, resolved: bool}
   research/            # research 角色考据笔记落这里（<topic>.md）
-  exports/             # 二期导出产物
+  exports/             # maoying export 导出产物（默认 <dir>/exports/，--out 可改）
 ```
 
 要点：五维字段键名用英文（cognitive_frame / emotional_anchor / world_texture / suspense / interpersonal_tension，YAML 工具安全），值中文；模板文件内注释给中文说明。frontmatter 用 `---` 围栏。所有 yml 顶层是数组或平键，禁止深嵌套——grep 友好。
@@ -162,14 +162,17 @@ persona prefix 内容骨架（agent.cordis.yml 内联，中文书写）：
 - `maoying init [dir]`：从 templates/novel/ 脚手架生成 novel/（已存在文件跳过，绝不覆盖），README.md + 各 yml 带中文注释示例。
 - `maoying stats [dir]`：逐章与总字数（CJK 计数）、状态分布、phase 展示。
 - `maoying index [dir]`：从 chapters/ 重建 index.yml（卷/章/标题/状态/字数/一句话梗概）。
-- 主编人设里写明：定稿维护后跑 `bash bin 不可用`——CLI 经 npx 形态不可靠，改为主编用 node 直跑插件内 CLI？**否**——一期方案：index.yml 由 lore 角色直接重写（文件规范写明格式），CLI index 仅供人工兜底。stats/init 人工用。
+- `maoying export [dir]`：导出全书为 md / txt / epub（默认 md；`--out` 改输出目录，缺省 `<dir>/exports/`；同名自动加序号不覆盖）。
+- `maoying brief [dir] <chapter>`：组装单章写作卡（章纲 + 前章结尾 + 出场角色卡 + 活跃伏笔）；`--out <文件>` 落盘，缺省打到 stdout。
+- `maoying check [dir]`：静态体检（不调模型），与面板/规范同一套规则（frontmatter 完整性、枚举、章号、伏笔引用、时间线年份、关系卡引用）。
+- 主编人设里写明：定稿维护后由 lore 角色直接重写 index.yml（文件规范写明格式），CLI `maoying index` 仅供人工兜底；stats / init 供人工使用。
 
 ## 8. 二期路线
 
 - ✅ **技能包（黄金三章/爽点节奏/审校清单/伏笔管理）**——已做：skills/ 四目录随包分发，安装器复制到 `<home>/skills/maoying-*`（逐字节比较幂等 + .installed-version 标记，见 index.mjs installSkills）。
 - ✅ **导出（MD/TXT/EPUB）**——已做：`maoying export [dir] --format md|txt|epub [--out <目录>]`；EPUB 由 lib/epub.mjs 零依赖打包（手写 stored zip + CRC32 表格法，EPUB 3 最小合法结构）。
 - ✅ **0.2.1-rc.2+ AgentPreset 形态适配**——已做：presets/maoying/agent.cordis.v2.yml（主编 + 5 角色 preset 的 v2 组合源）+ index.mjs composeManagedRows 按宿主版本双形态切换（v1 内联 / v2 AgentPreset，宿主升降级重启即整块换形状；防漂移由 test/composition.test.mjs 逐字节断言，见 README「兼容面」）。
-- ✅ **Web 创作台面板**——已做：/api/maoying/* 八条路由 + 左侧栏入口 + 会话中栏全页面板，八视图（概览/章节/角色/伏笔看板/关系图/时间线/设定/索引板）；设计与契约见 docs/creator-panel.md。
+- ✅ **Web 创作台面板**——已做：/api/maoying/* 十一条路由 + 左侧栏入口 + 会话中栏全页面板，九视图（概览/章节/角色/伏笔看板/关系图/时间线/设定/索引板/小说设置）；设计与契约见 docs/creator-panel.md。
 
 ## 9. 五期：共创模式（作者亲笔稿）
 

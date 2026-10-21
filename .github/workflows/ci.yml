@@ -1,0 +1,38 @@
+# CI —— dsh-maoying 测试门禁（零 npm 依赖，无需 install）
+#
+# 矩阵跑 Node 18 / 20 / 22（engines.node: >=18）。两步：
+#   1. 搭 /tmp/yamlcheck staging（借 yaml@2 给依赖 yaml 包的用例：安装器双形态、
+#      组合源防漂移、面板真解析路径）。staging 缺席时这些用例会优雅 skip，
+#      故该步失败（如网络抖动）不阻断流水线——测试套件在任何机器都不误报。
+#   2. npm test 全量 + npm run smoke（client.js factory 冒烟，见 scripts/smoke-client.mjs）。
+#
+# 注意：package.json 的 test 脚本用不带引号的 glob（test/*.test.mjs），由 shell
+# 展开——Node 18/20 的 --test 不认 glob 字面量（v21 起才支持），引号会让 18/20
+# 矩阵直接红。Linux runner（sh）展开后逐文件喂给 node --test，全版本一致。
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node-version: [18, 20, 22]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+      # yaml staging：给测试借包用（零依赖仓库，这一步是唯一的网络请求）
+      - name: 搭建 /tmp/yamlcheck staging（缺席可 skip，不阻断）
+        continue-on-error: true
+        run: npm install --no-save --prefix /tmp/yamlcheck yaml@2
+      - name: 全量测试
+        run: npm test
+      - name: client.js 冒烟
+        run: npm run smoke

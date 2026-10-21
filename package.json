@@ -14,12 +14,16 @@
   "bin": {
     "maoying": "bin/maoying.mjs"
   },
+  "scripts": {
+    "test": "node --test test/*.test.mjs",
+    "smoke": "node scripts/smoke-client.mjs"
+  },
   "engines": {
     "node": ">=18",
     "dsh": ">=0.1.7 <0.3"
   },
   "peerDependencies": {
-    "@deepseek-ai/dsh": ">=0.1.7"
+    "@deepseek-ai/dsh": ">=0.1.7 <0.3"
   },
   "dependencies": {},
   "files": [

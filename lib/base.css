@@ -376,8 +376,8 @@ html[data-dsh-maoying-active]:not([data-dsh-mnemon-active]):not([data-dsh-taskbo
 .myt-tableWrap { border: 1px solid var(--dsw-alias-border-l2); border-radius: 14px; background: var(--dsw-alias-bg-layer-3); overflow-x: auto; }
 .myt-table { width: 100%; border-collapse: collapse; font-size: 12px; }
 .myt-table th {
-  position: sticky;
-  top: 0;
+  /* 注：曾加 position:sticky 想吸附表头，但滚动发生在 .myt-tableWrap 内，
+     sticky 相对的滚动容器里表头不在滚动流上，永不生效，死效果已删。 */
   padding: 8px 12px;
   text-align: left;
   background: var(--dsw-alias-bg-layer-2);
@@ -392,29 +392,7 @@ html[data-dsh-maoying-active]:not([data-dsh-mnemon-active]):not([data-dsh-taskbo
 .myt-table tbody tr:hover { background: var(--dsw-alias-interactive-bg-hover); }
 .myt-summaryCell { max-width: 320px; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
 
-/* 章节抽屉 */
-.myt-drawerMask {
-  position: fixed;
-  inset: 0;
-  z-index: 70;
-  display: flex;
-  align-items: stretch;
-  justify-content: flex-end;
-  background: color-mix(in srgb, var(--dsw-alias-bg-base, #000) 55%, transparent);
-}
-.myt-drawer {
-  display: flex;
-  flex-direction: column;
-  width: min(560px, 92vw);
-  margin: 0;
-  background: var(--dsw-alias-bg-layer-2);
-  border-left: 1px solid var(--dsw-alias-border-l2);
-  box-shadow: -12px 0 32px color-mix(in srgb, #000 25%, transparent);
-}
-.myt-drawerHead { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 16px; border-bottom: 1px solid var(--dsw-alias-border-l1); }
-.myt-drawerTitle { margin: 0; min-width: 0; font-size: 14px; line-height: 20px; font-weight: 600; color: var(--dsw-alias-label-primary); overflow-wrap: anywhere; }
-.myt-drawerBody { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: 14px 16px; display: flex; flex-direction: column; gap: 12px; }
-.myt-drawerFoot { flex: none; display: flex; align-items: center; gap: 8px; padding: 12px 16px; border-top: 1px solid var(--dsw-alias-border-l1); }
+/* 章节正文（整页阅读器；原右侧抽屉组件已移除，.myt-drawer* 系死样式一并删）*/
 .myt-chapterBody {
   margin: 0;
   padding: 12px;
@@ -490,6 +468,21 @@ html[data-dsh-maoying-active]:not([data-dsh-mnemon-active]):not([data-dsh-taskbo
   border-radius: 999px;
   background: color-mix(in srgb, var(--dsw-alias-state-warn-primary) 12%, transparent);
   color: var(--dsw-alias-state-warn-primary);
+  font-size: 10px;
+  line-height: 14px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+/* 伏笔条目缺 status 行徽章（服务端要求恰一处 status，缺行时写入必 409，
+   客户端相应禁用流转按钮，卡片上挂此徽章提示）*/
+.myt-fsNoStatus {
+  flex: none;
+  padding: 0 6px;
+  border: 1px solid color-mix(in srgb, var(--dsw-alias-state-error-primary) 40%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--dsw-alias-state-error-primary) 12%, transparent);
+  color: var(--dsw-alias-state-error-primary);
   font-size: 10px;
   line-height: 14px;
   font-weight: 500;
@@ -725,7 +718,7 @@ html[data-dsh-maoying-active]:not([data-dsh-mnemon-active]):not([data-dsh-taskbo
   font-weight: 500;
   vertical-align: middle;
 }
-.myt-view, .myt-drawerMask, .myt-modalMask, .myt-settingsMask { zoom: var(--myt-zoom, 1); }
+.myt-view, .myt-modalMask, .myt-settingsMask { zoom: var(--myt-zoom, 1); }
 .myt-settingsMask {
   position: fixed;
   inset: 0;

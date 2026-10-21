@@ -125,8 +125,8 @@
   name: '@deepseek-ai/dsh-tool-jobs'
 
 # ── skills ──────────────────────────────────────────────────────────────────
-# 主编经 restrict 的 registry deny 看不到技能目录；写手/大纲师/设定管理员保留
-# skill（二期方法论技能包落点）。
+# 主编经 restrict 的 registry deny 看不到技能目录；写手/大纲师/审校/设定管理员
+# 保留 skill（二期方法论技能包落点；审校只读不改，skill 仅用于加载审校清单）。
 
 - id: skill-filesystem
   name: '@deepseek-ai/dsh-skill-filesystem'
@@ -276,6 +276,9 @@
             - read_image
             - glob
             - grep
+            # skill：只用于按 persona 加载 maoying-review-checklist 等只读方法论
+            # 技能；审校仍无 write/edit/bash，只读不改的约束不变。
+            - skill
             - todo_write
             - ask_user_question
 

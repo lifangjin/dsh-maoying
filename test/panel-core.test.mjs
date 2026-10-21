@@ -4,19 +4,36 @@
  *
  * 解析走两条路都断言：yamlLib 显式置 null（极简回退，确定性）为主；
  * 若本机 loadYamlLib 能借到 yaml 包，再加一轮真解析抽查（数组字段是真数组）。
+ * 另设「生产默认路径」用例：把 /tmp/yamlcheck 的 yaml 包搬进 TEST_HOME/node_modules，
+ * 覆盖不传 options 时从 DSH_HOME 惰性借包的真解析分支（staging 缺席优雅 skip）。
  */
 
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 
 // 测试全程把 DSH_HOME 钉在一次性临时目录——parseStateSnapshot 默认路径
 // （loadYamlLib(resolveDshHome())）绝不落到真实 ~/.dsh 上。
-import { makeTmpRoot } from './fixtures.mjs'
+// makeTmpRoot 包一层登记进 tmpRoots，test.after 统一删除（含模块级 TEST_HOME），
+// 对照 test/installer-shape.test.mjs 的清理写法。
+import { buildSampleNovel, makeRegistry, makeTmpRoot as makeRawTmpRoot } from './fixtures.mjs'
 
+const PREV_DSH_HOME = process.env.DSH_HOME
+const tmpRoots = []
+function makeTmpRoot(prefix) {
+  const dir = makeRawTmpRoot(prefix)
+  tmpRoots.push(dir)
+  return dir
+}
 const TEST_HOME = makeTmpRoot('maoying-home-')
 process.env.DSH_HOME = TEST_HOME
+
+test.after(() => {
+  if (PREV_DSH_HOME === undefined) delete process.env.DSH_HOME
+  else process.env.DSH_HOME = PREV_DSH_HOME
+  for (const dir of tmpRoots.splice(0)) rmSync(dir, { recursive: true, force: true })
+})
 
 const {
   listWorkspaces,
@@ -31,7 +48,6 @@ const {
   PanelError,
 } = await import('../lib/panel-core.mjs')
 const { loadYamlLib } = await import('../lib/yaml-loader.mjs')
-const { buildSampleNovel, makeRegistry } = await import('./fixtures.mjs')
 
 /** 状态码断言助手：fn 必须抛出带指定 statusCode 的 PanelError。 */
 function assertFails(fn, statusCode, messageIncludes) {
@@ -275,6 +291,18 @@ status: writing
   assert.ok(readFileSync(path.join(novel, 'chapters', 'v01-bare.md'), 'utf8').startsWith('没有围栏'))
 })
 
+test('mutateChapterStatus：status 行尾注释流转后原样保留', () => {
+  const root = makeTmpRoot()
+  const novel = buildSampleNovel(root)
+  const target = path.join(novel, 'chapters', 'v01-c002.md')
+  writeFileSync(target, readFileSync(target, 'utf8').replace('status: writing\n', 'status: writing # 编辑部在盯\n'), 'utf8')
+
+  mutateChapterStatus(novel, 'v01-c002.md', 'review')
+  const text = readFileSync(target, 'utf8')
+  assert.ok(text.includes('status: review # 编辑部在盯'), '行尾注释应随流转原样保留')
+  assert.ok(!text.includes('status: writing'), '旧值不应残留')
+})
+
 test('mutateForeshadowStatus：正常流转，只动对应条目的 status 行', () => {
   const root = makeTmpRoot()
   const novel = buildSampleNovel(root)
@@ -302,6 +330,18 @@ test('mutateForeshadowStatus：非法值 422、坏 id 422、未知 id 404、无 
   assertFails(() => mutateForeshadowStatus(novel, 'fs 001', 'planted'), 422)
   assertFails(() => mutateForeshadowStatus(novel, 'fs-999', 'progressing'), 404)
   assertFails(() => mutateForeshadowStatus(novel, 'fs-003', 'resolved'), 409) // fs-003 没写 status 行
+})
+
+test('mutateForeshadowStatus：status 行尾注释与间距流转后原样保留', () => {
+  const root = makeTmpRoot()
+  const novel = buildSampleNovel(root)
+  const target = path.join(novel, 'foreshadows.yml')
+  writeFileSync(target, readFileSync(target, 'utf8').replace('  status: planted\n', '  status: planted   # 埋于第一章当铺夜客\n'), 'utf8')
+
+  mutateForeshadowStatus(novel, 'fs-001', 'progressing')
+  const text = readFileSync(target, 'utf8')
+  assert.ok(text.includes('  status: progressing   # 埋于第一章当铺夜客'), '行尾注释与值后间距应原样保留')
+  assert.ok(!text.includes('  status: planted'), '旧值不应残留')
 })
 
 test('mutatePhase：正常推进且保住行尾注释；非法值 422；无 phase 行 409', () => {
@@ -339,7 +379,7 @@ test('mutateProject：批量改写保注释、缺键补齐、越枚举/空书名
   assert.ok(after.includes('phase: outline'), 'phase 应写入')
   assert.ok(/phase: outline[ \t]*#/.test(after), 'phase 行尾注释应保留')
   assert.ok(after.includes('author: 墨客'), '安全字符裸写')
-  assert.ok(after.includes('description: "一句话\\"简介\\""' .replaceAll('\\\\', '\\')), '双引号应转义包裹')
+  assert.ok(after.includes('description: "一句话\\"简介\\"'), '双引号应转义包裹')
   // 原有注释头不应丢
   assert.ok(after.includes('# project.yml'), '模板注释头应保留')
 
@@ -356,6 +396,63 @@ test('mutateProject：批量改写保注释、缺键补齐、越枚举/空书名
   const text2 = readFileSync(path.join(novel2, 'project.yml'), 'utf8')
   assert.ok(text2.includes('author: 阿墨'), '缺失键应补齐')
   assert.ok(text2.includes('language: zh'), '语言缺省补 zh')
+})
+
+test('mutateProject：值含 #（长#夜）连存两次仍合法且值不变，行尾注释照留', () => {
+  const root = makeTmpRoot()
+  const novel = buildSampleNovel(root)
+  const target = path.join(novel, 'project.yml')
+  const values = { title: '长#夜', phase: 'writing', mode: 'ai-draft' }
+
+  mutateProject(novel, values)
+  const once = readFileSync(target, 'utf8')
+  assert.ok(once.includes('title: "长#夜"'), '值内 # 不是注释，应整体双引号包裹')
+  assert.ok(!once.includes('"长#夜"#'), '不应出现注释截断产物（title: "长#夜"#夜"）')
+  assert.ok(/^mode: ai-draft[ \t]+# 五期模式开关/m.test(once), 'mode 行尾注释应原样保留')
+
+  mutateProject(novel, values)
+  const twice = readFileSync(target, 'utf8')
+  assert.equal(twice, once, '同值连存两次应逐字节一致（回归：值内 # 被当注释截断的刀法损坏）')
+
+  // 回读仍是原字符串：回退解析 + 真 YAML 双路（借不到 yaml 只跑回退路）
+  assert.equal(parseStateSnapshot(novel, { yamlLib: null }).project.title, '长#夜')
+  const yamlLib = loadYamlLib(TEST_HOME)
+  if (yamlLib) assert.equal(parseStateSnapshot(novel, { yamlLib }).project.title, '长#夜')
+})
+
+test('mutateProject：纯数字/布尔形书名（2046、true、-2.5）落盘带引号，回读不漂成 number/boolean', () => {
+  const root = makeTmpRoot()
+  const novel = buildSampleNovel(root)
+  const target = path.join(novel, 'project.yml')
+  const yamlLib = loadYamlLib(TEST_HOME)
+
+  for (const title of ['2046', 'true', '-2.5']) {
+    mutateProject(novel, { title, phase: 'idea', mode: 'ai-draft' })
+    const text = readFileSync(target, 'utf8')
+    assert.ok(text.includes(`title: "${title}"`), `「${title}」应双引号包裹落盘`)
+    // 真 YAML 回读：双引号标量恒为字符串（借不到 yaml 时跳过该路；回退解析的
+    // parseScalarText 对带引号数字串的还原本属 novel-parse，不在本文件断言）
+    if (yamlLib) assert.equal(parseStateSnapshot(novel, { yamlLib }).project.title, title)
+    mutateProject(novel, { title, phase: 'idea', mode: 'ai-draft' })
+    assert.equal(readFileSync(target, 'utf8'), text, `「${title}」连存两次应逐字节一致`)
+  }
+})
+
+test('parseFrontmatterFallback：__proto__ 键只落自身属性，改写不了原型（null 原型加固）', () => {
+  const root = makeTmpRoot()
+  const novel = buildSampleNovel(root)
+  writeFileSync(path.join(novel, 'chapters', 'v01-proto.md'), `---
+__proto__: injected
+title: 原型试探
+---
+
+正文。
+`, 'utf8')
+
+  const { frontmatter } = readChapter(novel, 'v01-proto.md', { yamlLib: null })
+  assert.equal(Object.getPrototypeOf(frontmatter), null, 'meta 应是无原型对象')
+  assert.equal(frontmatter.__proto__, 'injected', '__proto__ 应是自身属性')
+  assert.equal(frontmatter.title, '原型试探', '正常键不受影响')
 })
 
 test('rebuildIndex：index.yml 落盘且确定性（两次重建逐字节一致）；chapters/ 缺失 404', () => {
@@ -443,4 +540,48 @@ test('PanelError 带 statusCode（路由层按它回状态码）', () => {
   const err = new PanelError(409, '冲突')
   assert.equal(err.statusCode, 409)
   assert.equal(err instanceof Error, true)
+})
+
+// ── 生产默认 yaml 真解析路径（staging 缺席优雅 skip，对照 composition.test.mjs）──
+
+const YAML_STAGING = '/tmp/yamlcheck/node_modules/yaml'
+
+test('生产默认路径：不传 options 时从 DSH_HOME 惰性借 yaml 包，readProject / parseFrontmatterMeta / collectArrayYml 走真解析', (t) => {
+  if (!existsSync(YAML_STAGING)) return t.skip('本机没有 /tmp/yamlcheck 的 yaml 包（npm install --no-save --prefix /tmp/yamlcheck yaml@2 可补）')
+  // 把 staging 的 yaml 包搬进 TEST_HOME/node_modules——yamlLibOf 的默认路径
+  // （loadYamlLib(resolveDshHome())，DSH_HOME 已钉在 TEST_HOME）由此真命中
+  // 主探针 <home>/node_modules，机制对照 test/installer-shape.test.mjs 的 yamlOf()。
+  mkdirSync(path.join(TEST_HOME, 'node_modules'), { recursive: true })
+  cpSync(YAML_STAGING, path.join(TEST_HOME, 'node_modules', 'yaml'), { recursive: true })
+  const borrowed = loadYamlLib(TEST_HOME)
+  assert.ok(borrowed && typeof borrowed.parse === 'function', 'loadYamlLib 应能从 TEST_HOME 借到 yaml 包')
+
+  const root = makeTmpRoot()
+  const novel = buildSampleNovel(root)
+  // 关键：不传 options（不显式给 yamlLib）——走生产默认借包路径，而非回退。
+  const snap = parseStateSnapshot(novel)
+
+  // readProject 真分支：8 键契约（含五期 mode），值来自真解析
+  assert.deepEqual(Object.keys(snap.project), ['title', 'author', 'genre', 'length', 'language', 'phase', 'mode', 'description'])
+  assert.equal(snap.project.mode, 'ai-draft')
+  assert.equal(snap.project.title, '雪葬长夜')
+
+  // parseFrontmatterMeta 真分支：age 真数字、markers 真数组（[] 形状也认）
+  const lin = snap.characters.find((c) => c.file === 'lin-waner.md')
+  assert.equal(lin.age, 19)
+  assert.deepEqual(lin.markers, ['紧张时摩挲袖口', '说话前先抿嘴'])
+  assert.deepEqual(snap.characters.find((c) => c.file === 'shen-mo.md').markers, [])
+
+  // collectArrayYml 真分支：relations 条目为真映射；裸标量坏条目照旧跳过记警告
+  assert.equal(snap.relations.length, 1)
+  assert.equal(snap.relations[0].intensity, 4)
+  assert.equal(snap.relations[0].ended, '')
+  assert.ok(snap.warnings.some((w) => w.includes('foreshadows.yml')), '真解析下裸标量条目也应记警告')
+
+  // 差异断言（证明真分支确实在跑）：流式映射值真 yaml 解析为对象 → strOrNull 归
+  // null；回退解析器不认流式形态，会给出原样字符串——两者结果可区分。
+  const root2 = makeTmpRoot()
+  mkdirSync(path.join(root2, 'novel'), { recursive: true })
+  writeFileSync(path.join(root2, 'novel', 'project.yml'), 'title: 差异断言\ndescription: {nested: 数据规范禁深嵌套}\n', 'utf8')
+  assert.equal(parseStateSnapshot(path.join(root2, 'novel')).project.description, null)
 })

@@ -149,7 +149,7 @@ references:               # 依据来源，一行一个（已知设定 id 或现
 
 ## foreshadows.yml
 
-伏笔账本（状态机语义见 docs/spec.md 或主编人设）。埋设与回收必须记章节号；活跃伏笔（planted/progressing）超过 15 条时应提醒清理。
+伏笔账本（状态机语义见上文「总原则」的伏笔状态枚举）。埋设与回收必须记章节号；活跃伏笔（planted/progressing）超过 15 条时应提醒清理。
 
 ```yaml
 - id: fs-001              # 编号不复用
@@ -170,7 +170,7 @@ references:               # 依据来源，一行一个（已知设定 id 或现
 世界内时间线（故事内纪年，不是写作顺序），按故事内时间排序。
 
 ```yaml
-- year: 玄历三年冬         # 故事内纪年
+- year: 玄历1024年冬       # 故事内纪年，须含数字（check 按数字解析）
   title: 北境雪灾
   description: 补充说明（可空）
   importance: 4            # 1-5，5 = 改写主线走向的大事
@@ -204,4 +204,4 @@ references:               # 依据来源，一行一个（已知设定 id 或现
 
 ## exports/
 
-导出产物（MD/TXT/EPUB 等在一期之后），init 只建目录。
+导出产物：`maoying export` 的默认落盘点（--format md|txt|epub，--out 可改到别处），init 只建目录。

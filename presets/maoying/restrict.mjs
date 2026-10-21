@@ -13,13 +13,12 @@
  *   - 内部检索（热路径，不绕委派）：glob / grep / read / read_image / bash
  *   - 协调：todo_write / ask_user_question / goal_* / job_* / exit_plan_mode
  *
- * 主编看不到（请求成本归零）：web_search / web_fetch（考据委派 research）、
- * write / edit（落盘一律经角色或主编亲自验收后少量进行——主编保写权，
- * 见下方差异说明）、skill 目录（registry deny 堵 ~1.3k 注入）、以及未列出的
- * 一切通用委派与工作流工具。
+ * 主编看不到（白名单外收窄——只为省请求成本，不是安全边界）：web_search /
+ * web_fetch（考据委派 research）、skill 目录（registry deny 堵 ~1.3k 注入）、
+ * 以及未列出的一切通用委派与工作流工具。
  *
- * 说明：主编白名单保留 write/edit——主编需要亲自做小修小补
- * （改 phase、补 frontmatter、微调摘要），这些活不值得委派一次。
+ * write / edit 保留在白名单（见 MAIN_AGENT_ALLOW 尾段）：主编需要亲自做小修
+ * 小补（改 phase、补 frontmatter、微调摘要），这些活不值得委派一次。
  *
  * Host 工具（mcp__*、插件工具）一律不硬编码——是否挂载是检测期事实，
  * 硬编码会让未装对应插件的宿主直接出错。本文件只留 dsh 核心工具。

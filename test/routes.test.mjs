@@ -3,25 +3,43 @@
  * 注册出的 handler——webServer.register 收集路由，req/res 用 EventEmitter +
  * 记账对象模拟（最小 IncomingMessage/ServerResponse 形状）。
  *
- * 覆盖：信任围栏（Host / sec-fetch-site / origin / trustedHosts）、state 契约
- * 字段、chapter-status 流转与防穿越、foreshadow-status、phase、rebuild-index、
- * chapter 读取、404、413，以及 registerPrefixRouteWithRetry 的重试语义和
- * apply() 末尾「路由注册失败只 warn」的降级路径。
+ * 覆盖：信任围栏（Host / sec-fetch-site / origin 完整 scheme+host+port 同源
+ * 校验 / trustedHosts）、state 契约字段、chapter-status 流转与防穿越、
+ * foreshadow-status、phase、rebuild-index、chapter 读取、404、413（响应体
+ * 可达：先回包后断开）、迭代路由接线（project-save 改键与越枚举 422、
+ * update-check 响应形状、host-debug 五级探针与脱敏、非法 JSON body 400），
+ * 以及 registerPrefixRouteWithRetry 的重试语义（同步抛与 rejected promise
+ * 两条路）和 apply() 末尾「路由注册失败只 warn」的降级路径。
  */
 
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { EventEmitter } from 'node:events'
-import { mkdtempSync, readFileSync } from 'node:fs'
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 
 // 测试全程把 DSH_HOME 钉在一次性临时目录——路由内部默认解析路径绝不落真实 ~/.dsh。
+const PREV_DSH_HOME = process.env.DSH_HOME
 const TEST_HOME = mkdtempSync(path.join(os.tmpdir(), 'maoying-routes-home-'))
 process.env.DSH_HOME = TEST_HOME
 
+// 进程退出前统一收尾：恢复 DSH_HOME、删本文件的临时 home 与各测试工作区
+// （对照 installer-shape.test.mjs 的 test.after 写法）。
+const cleanup = []
+test.after(() => {
+  if (PREV_DSH_HOME === undefined) delete process.env.DSH_HOME
+  else process.env.DSH_HOME = PREV_DSH_HOME
+  for (const dir of cleanup.splice(0)) rmSync(dir, { recursive: true, force: true })
+})
+cleanup.push(TEST_HOME)
+
 const { buildSampleNovel, makeRegistry, makeFakeCtx } = await import('./fixtures.mjs')
 const { registerCreatorRoutes, registerPrefixRouteWithRetry } = await import('../index.mjs')
+
+// 插件根（host-debug 脱敏断言用）：本测试跑在仓库 test/ 下，上一级即插件根。
+const PLUGIN_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 
 // ── 假 req/res ──────────────────────────────────────────────────────────────
 
@@ -64,6 +82,7 @@ const LOOPBACK = { host: '127.0.0.1:58281' }
 
 function makeEnv() {
   const root = mkdtempSync(path.join(os.tmpdir(), 'maoying-ws-'))
+  cleanup.push(root)
   buildSampleNovel(root)
   const { ctx, routes } = makeFakeCtx({ registry: makeRegistry([root]) })
   return { root, ctx, routes }
@@ -100,11 +119,20 @@ test('围栏：sec-fetch-site cross-site 403（即便 Host 回环）', async () 
   assert.deepEqual(JSON.parse(state.raw), { error: 'forbidden' })
 })
 
-test('围栏：origin 异源 403，同源放行', async () => {
+test('围栏：origin 同源放行；异源 403（异主机、异端口、异 scheme 都算）', async () => {
   const env = makeEnv()
   const handler = await registeredHandler(env)
+  // 异主机
   const evil = await call(handler, { url: '/api/maoying/workspaces', headers: { ...LOOPBACK, origin: 'http://evil.example.com' } })
   assert.equal(evil.status, 403)
+  // 同 hostname 不同端口：sec-fetch-site 对它是 same-site（围栏拦不住），只能
+  // 靠 origin 与 Host 的 host:port 全串比较挡下（回归：只比 hostname 的漏放）
+  const wrongPort = await call(handler, { url: '/api/maoying/workspaces', headers: { ...LOOPBACK, origin: 'http://127.0.0.1:9999' } })
+  assert.equal(wrongPort.status, 403)
+  // scheme 不一致同样不是同源
+  const wrongScheme = await call(handler, { url: '/api/maoying/workspaces', headers: { ...LOOPBACK, origin: 'https://127.0.0.1:58281' } })
+  assert.equal(wrongScheme.status, 403)
+  // 完整同源（scheme+host+port 全同）放行
   const same = await call(handler, { url: '/api/maoying/workspaces', headers: { ...LOOPBACK, origin: 'http://127.0.0.1:58281' } })
   assert.equal(same.status, 200)
 })
@@ -118,6 +146,7 @@ test('围栏：Host 回环放行', async () => {
 
 test('围栏：webRuntime.trustedHosts 实时读取，精确 host:port 匹配', async () => {
   const root = mkdtempSync(path.join(os.tmpdir(), 'maoying-ws2-'))
+  cleanup.push(root)
   const { ctx, routes } = makeFakeCtx({
     registry: makeRegistry([root]),
     webRuntime: { trustedHosts: ['maoying.example:8443'] },
@@ -297,12 +326,106 @@ test('未知路由 404；超大请求体 413', async () => {
   assert.equal(notFound.status, 404)
   assert.equal(JSON.parse(notFound.raw).ok, false)
 
+  // 413 响应体可达：readBody 先回 JSON 再断开连接（修复前先 destroy，客户端
+  // 只能收到 ECONNRESET 空响应）——假件下必须收到完整 { ok: false, error }。
   const tooBig = await call(handler, {
     method: 'POST', url: '/api/maoying/phase', headers: LOOPBACK,
     body: Buffer.alloc(5 * 1024 * 1024 + 1, 97),
   })
   assert.equal(tooBig.status, 413)
-  assert.equal(JSON.parse(tooBig.raw).ok, false)
+  assert.equal(tooBig.headers['content-type'], 'application/json; charset=utf-8')
+  assert.ok(tooBig.raw.length > 0, '413 必须带 JSON 响应体而非空')
+  const tooBigPayload = JSON.parse(tooBig.raw)
+  assert.equal(tooBigPayload.ok, false)
+  assert.match(tooBigPayload.error, /too large/)
+})
+
+// ── 迭代路由接线：project-save / update-check / host-debug / 坏 JSON ─────────
+
+test('project-save：正常改键 200 且保行尾注释；mode/phase 越枚举 422 点名字段', async () => {
+  const env = makeEnv()
+  const handler = await registeredHandler(env)
+  const ok = await call(handler, {
+    method: 'POST', url: '/api/maoying/project-save', headers: LOOPBACK,
+    body: {
+      path: env.root,
+      values: {
+        title: '雪葬长夜（改）', author: '试笔人', genre: '东方玄幻', length: '约100万字',
+        language: 'zh', phase: 'outline', mode: 'co-write', description: '北境雪灾后的长生局。',
+      },
+    },
+  })
+  assert.equal(ok.status, 200)
+  assert.deepEqual(JSON.parse(ok.raw), { ok: true })
+  const project = readFileSync(path.join(env.root, 'novel', 'project.yml'), 'utf8')
+  assert.ok(project.includes('title: 雪葬长夜（改）'))
+  assert.ok(project.includes('mode: co-write'), '改键应落盘')
+  assert.ok(project.includes('# 五期模式开关'), '行尾注释应原样保留')
+
+  // 越枚举：mutateProject 先验 phase 后验 mode，两个方向各一例，错误点名字段
+  for (const [field, values] of [
+    ['mode', { phase: 'writing', mode: 'solo' }],
+    ['phase', { phase: 'forever', mode: 'ai-draft' }],
+  ]) {
+    const bad = await call(handler, {
+      method: 'POST', url: '/api/maoying/project-save', headers: LOOPBACK,
+      body: { path: env.root, values: { title: 'x', ...values } },
+    })
+    assert.equal(bad.status, 422, `${field} 越枚举应 422`)
+    assert.ok(JSON.parse(bad.raw).error.includes(field), `错误信息应点名 ${field}`)
+  }
+})
+
+test('update-check：200 且响应形状完整（三级源全败也回降级形状）', async () => {
+  const env = makeEnv()
+  const handler = await registeredHandler(env)
+  const state = await call(handler, { url: '/api/maoying/update-check', headers: LOOPBACK })
+  assert.equal(state.status, 200)
+  const body = JSON.parse(state.raw)
+  assert.equal(body.ok, true)
+  // 形状契约：在线检测可能全败（CI 无网/镜像限流），但字段一个不能少，
+  // 降级形态 = latest 为 null / error 非 null / source 标注失败源
+  for (const key of ['current', 'latest', 'updateAvailable', 'releaseUrl', 'checkedAt', 'error', 'source']) {
+    assert.ok(key in body, `update-check 响应缺 ${key} 字段`)
+  }
+  assert.equal(typeof body.current, 'string')
+  assert.equal(typeof body.updateAvailable, 'boolean')
+  if (body.error !== null) {
+    assert.equal(body.latest, null, '有 error 时 latest 应为 null（降级形状）')
+  }
+})
+
+test('host-debug：200 含五级探针 trace，本机绝对路径脱敏', async () => {
+  const env = makeEnv()
+  const handler = await registeredHandler(env)
+  const state = await call(handler, { url: '/api/maoying/host-debug', headers: LOOPBACK })
+  assert.equal(state.status, 200)
+  const body = JSON.parse(state.raw)
+  assert.equal(body.ok, true)
+  // 轨迹形状：argv[1] / argv-scan / asar / desktop-runtime / electron-api /
+  // home-global 每级都留痕，home-global 兜底恒在最后
+  assert.ok(Array.isArray(body.trace) && body.trace.length >= 6, `trace 应覆盖全部探针：${JSON.stringify(body.trace)}`)
+  for (const entry of body.trace) assert.equal(typeof entry.probe, 'string')
+  assert.equal(body.trace.at(-1).probe, 'home-global')
+  assert.ok(body.hostVersion === null || typeof body.hostVersion === 'string')
+  assert.equal(body.shape, 'v1', '测试环境读不到宿主版本，形状判定应保守 v1')
+  assert.ok(body.registry !== undefined && typeof body.runtime === 'object')
+  // 脱敏纪律：测试 cwd 就是插件根，必进 runtime.cwd / argv——不得以绝对路径出门
+  assert.ok(!state.raw.includes(PLUGIN_ROOT), 'host-debug 响应不得包含插件根绝对路径')
+  assert.ok(body.runtime.cwd !== process.cwd(), 'cwd 应已脱敏为 ~ 前缀相对形态')
+})
+
+test('非法 JSON body：400 且 error 点名 invalid JSON', async () => {
+  const env = makeEnv()
+  const handler = await registeredHandler(env)
+  const state = await call(handler, {
+    method: 'POST', url: '/api/maoying/project-save', headers: LOOPBACK,
+    body: Buffer.from('{not-json'),
+  })
+  assert.equal(state.status, 400)
+  const body = JSON.parse(state.raw)
+  assert.equal(body.ok, false)
+  assert.match(body.error, /invalid JSON/)
 })
 
 // ── 注册机制 ────────────────────────────────────────────────────────────────
@@ -325,6 +448,31 @@ test('registerPrefixRouteWithRetry：duplicate 短重试后成功；其他错误
 
   const always = { register() { throw new Error('webserver: duplicate prefix route "/api/maoying" already registered') } }
   await assert.rejects(() => registerPrefixRouteWithRetry(always, { kind: 'prefix', path: '/api/x', handler() {} }, { attempts: 2, delayMs: 1 }), /duplicate prefix route/)
+})
+
+test('registerPrefixRouteWithRetry：register 返回 rejected promise 也接得住，重试后成功', async () => {
+  // 宿主 register 可能走异步校验路径，duplicate 以 rejected promise 形态出现。
+  // 修复前不 await：rejection 变 unhandled rejection 逃逸，短重试形同虚设。
+  let calls = 0
+  const asyncFlaky = {
+    register() {
+      calls += 1
+      if (calls < 3) return Promise.reject(new Error('webserver: duplicate prefix route "/api/maoying" already registered'))
+      return () => {}
+    },
+  }
+  const disposer = await registerPrefixRouteWithRetry(asyncFlaky, { kind: 'prefix', path: '/api/maoying', handler() {} }, { delayMs: 1 })
+  assert.equal(typeof disposer, 'function')
+  assert.equal(calls, 3, '前两次 rejected promise 应各触发一次重试')
+
+  // 次次 rejected 的 duplicate：重试耗尽后仍要抛出最后一个错误（而非静默丢失）
+  const alwaysAsync = {
+    register: () => Promise.reject(new Error('webserver: duplicate prefix route "/api/maoying" already registered')),
+  }
+  await assert.rejects(
+    () => registerPrefixRouteWithRetry(alwaysAsync, { kind: 'prefix', path: '/api/x', handler() {} }, { attempts: 2, delayMs: 1 }),
+    /duplicate prefix route/,
+  )
 })
 
 test('apply()：webServer 缺席时路由注册失败只 warn，不抛不炸', async () => {

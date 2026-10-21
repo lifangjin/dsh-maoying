@@ -51,7 +51,7 @@
  *   限额 JSON 读体、client.css 现读下发。
  */
 
-import { closeSync, copyFileSync, existsSync, mkdirSync, openSync, readdirSync, readFileSync, readSync, rmSync, writeFileSync } from 'node:fs'
+import { closeSync, copyFileSync, existsSync, mkdirSync, openSync, readdirSync, readFileSync, readSync, renameSync, unlinkSync, writeFileSync } from 'node:fs'
 import { createHash } from 'node:crypto'
 import { pathToFileURL } from 'node:url'
 import { getVersionInfo } from './lib/version.mjs'
@@ -137,6 +137,44 @@ export function preprocessPatchText(text) {
   return text
     .replaceAll("!!js process.platform === 'win32'", isWin ? 'true' : 'false')
     .replaceAll("!!js process.platform !== 'win32'", isWin ? 'false' : 'true')
+}
+
+/**
+ * 逐字节比较复制（预设文件与技能文件共用）：dst 已存在且内容与 src 完全一致
+ * 时不写（保住 mtime，二跑零写盘）；读不到/比较失败一律按「不一致」重写。
+ * 读/写失败原样抛出，由调用方决定 warn 还是中止——失败语义归调用方。
+ * @returns {boolean} 本次是否有复制动作
+ */
+function syncFileIfChanged(src, dst) {
+  let same = false
+  try {
+    same = existsSync(dst) && readFileSync(dst).equals(readFileSync(src))
+  } catch {
+    same = false
+  }
+  if (same) return false
+  mkdirSync(path.dirname(dst), { recursive: true })
+  copyFileSync(src, dst)
+  return true
+}
+
+/**
+ * .installed-version 版本标记写入（预设目录与技能目录共用）：内容与 version
+ * 一致即不重写（mtime 也是产物，少动一次是一次）。标记读不到按过期处理；
+ * 写失败原样抛出，warn 文案由调用方按现场拼。
+ * @returns {boolean} 本次是否有写入动作
+ */
+function writeMarkerIfChanged(dir, version) {
+  const markerPath = path.join(dir, '.installed-version')
+  let current = false
+  try {
+    current = existsSync(markerPath) && readFileSync(markerPath, 'utf8').trim() === version
+  } catch {
+    current = false
+  }
+  if (current) return false
+  writeFileSync(markerPath, `${version}\n`, 'utf8')
+  return true
 }
 
 // ── semver（手写，零依赖）────────────────────────────────────────────────────
@@ -468,16 +506,25 @@ export function parsePresetRows(yaml, agentCordisV2Text) {
  * 落空（注册表审计报 never started，0.1.8 host-debug 实测坐实）。Node ESM 对
  * file:// URL 是合法模块说明符，指向 <home>/.agent-presets/maoying/ 安装副本
  * （真实文件系统，任何进程可读）。
+ *
+ * 遍历策略：保守递归下钻声明行整棵结构（对象/数组逐层走），不只盯
+ * config.plugins 一层——v1 组合源的 cordis:group 子件就挂在 config 数组里，
+ * 未来再嵌套一层的 './' 本地名只盯单层会静默漏改。凡遍历到的 './' 开头字符串
+ * 一律视为插件名候选替换：声明行里其余字符串都是 persona/提示词类文案，约定
+ * 不会以 './' 开头，误替换面为零。
  */
 function absolutizeLocalPluginNames(rows, presetDir) {
-  for (const row of rows ?? []) {
-    for (const p of row?.config?.plugins ?? []) {
-      if (typeof p?.name === 'string' && p.name.startsWith('./')) {
-        p.name = pathToFileURL(path.join(presetDir, p.name.slice(2))).href
-      }
+  const walk = (node) => {
+    if (typeof node === 'string') {
+      return node.startsWith('./') ? pathToFileURL(path.join(presetDir, node.slice(2))).href : node
     }
+    if (Array.isArray(node)) return node.map(walk)
+    if (node !== null && typeof node === 'object') {
+      return Object.fromEntries(Object.entries(node).map(([k, v]) => [k, walk(v)]))
+    }
+    return node
   }
-  return rows
+  return walk(rows)
 }
 
 export function composeManagedRows(home, logger = console) {
@@ -516,6 +563,9 @@ export function stringifyManagedBlock(yaml, rows) {
     // lineWidth: 0 关掉自动折行——plain 标量折行虽合法但产物不可读、diff 噪音大
     return `${MANAGED_BEGIN}\n${yaml.stringify(doc, { lineWidth: 0 }).replace(/\n+$/, '')}\n${MANAGED_END}`
   }
+  // JSON 回退分支生产不可达（宿主 <home>/node_modules 必带 yaml 包，loadYamlLib
+  // 读不到时 composeManagedRows 已提前返回 null rows）——仅测试直传 yaml=null
+  // 可达（test/installer-shape.test.mjs 验证 JSON 形态同为合法 YAML）。
   return `${MANAGED_BEGIN}\n${JSON.stringify(doc)}\n${MANAGED_END}`
 }
 
@@ -524,13 +574,22 @@ export function stringifyManagedBlock(yaml, rows) {
 /**
  * 在行数组里定位托管块 [begin, end]（闭区间下标）。无起始标记返回 null；
  * 有起始无结束（托管块损坏，多半是手工删了半截）throw——拒绝写盘，绝不覆盖
- * 手工内容。
+ * 手工内容。只认首对：首对之后若再出现起始标记（用户误复制了一份托管块），
+ * warn 提醒手工清理，多余的块按普通用户内容原样保留、绝不动它。
  */
-export function findManagedSpan(lines) {
+export function findManagedSpan(lines, { logger = console } = {}) {
   const begin = lines.findIndex((l) => l.trim() === MANAGED_BEGIN)
   if (begin === -1) return null
   for (let i = begin + 1; i < lines.length; i++) {
-    if (lines[i].trim() === MANAGED_END) return { begin, end: i }
+    if (lines[i].trim() === MANAGED_END) {
+      if (lines.slice(i + 1).some((l) => l.trim() === MANAGED_BEGIN)) {
+        logger.warn?.(
+          'maoying-installer: cordis.patch.yml 里检测到第二处 dsh-maoying 托管块起始标记——' +
+            '疑似误复制；本安装器只维护第一对，多余的块请手工删除',
+        )
+      }
+      return { begin, end: i }
+    }
   }
   throw new Error(
     `cordis.patch.yml 的 dsh-maoying 托管块已损坏（只有起始标记、找不到结束标记 "${MANAGED_END}"）：` +
@@ -543,8 +602,16 @@ export function findManagedSpan(lines) {
  *   'skipped' — 托管块已在且内容与版本标记都一致，零写盘；
  *   'updated' — 整块替换（块外用户内容一字节不动）；
  *   'created' — 原无托管块，文末追加（文件不存在则连头注释一起新建）。
+ *
+ * 并发与原子性考量（宿主级共享文件，CLI 与桌面可能双开）：写盘走「同目录
+ * 临时文件 + renameSync 原子替换」，不做整文件截断覆写——rename 在同一文件
+ * 系统内要么整体成功要么不动，任何时刻盘上只有完整的旧内容或完整的新内容，
+ * 进程中途崩溃也绝不会留下半截 YAML。跨进程仍是「各自基于快照整文件替换」
+ * 的后写者赢语义（零依赖设计不引文件锁）；配合写前重读对比，把「内容并无
+ * 变化」的二跑收敛为零写盘，交错写的实际危害只剩同刻并发更新的丢失，不会
+ * 产生损坏文件。
  */
-export function upsertManagedBlock(dshHome, blockText, { versionMarkerCurrent }) {
+export function upsertManagedBlock(dshHome, blockText, { versionMarkerCurrent, logger = console }) {
   const patchPath = path.join(dshHome, 'cordis.patch.yml')
   let text = null
   try {
@@ -556,7 +623,7 @@ export function upsertManagedBlock(dshHome, blockText, { versionMarkerCurrent })
   const lines = text !== null ? text.split(/\r?\n/) : [HOME_PATCH_HEADER, '']
   const incoming = blockText.replace(/\r?\n/g, '\n')
 
-  const span = findManagedSpan(lines) // 损坏块 throw，直接中止（未写任何盘）
+  const span = findManagedSpan(lines, { logger }) // 损坏块 throw，直接中止（未写任何盘）
   if (span !== null) {
     const existing = lines.slice(span.begin, span.end + 1).join('\n')
     if (versionMarkerCurrent && existing === incoming) return 'skipped'
@@ -567,8 +634,24 @@ export function upsertManagedBlock(dshHome, blockText, { versionMarkerCurrent })
     if (text !== null && text.trim() !== '' && lines[lines.length - 1].trim() !== '') lines.push('')
     lines.push(...incoming.split('\n'), '')
   }
+  const content = lines.join(eol)
+  // 写前重读对比（幂等强化）：首次读到真正写盘之间文件可能已被并发进程改成
+  // 与目标一致的内容——已一致就不再写盘，省一次 mtime 抖动、也收窄交错写窗口。
+  try {
+    if (readFileSync(patchPath, 'utf8') === content) return 'skipped'
+  } catch { /* 重读失败（文件被并发删/权限抖动）按首次写处理 */ }
+  // 原子落盘：临时文件带 pid 命名，多进程各写各的临时件互不踩踏。
   mkdirSync(dshHome, { recursive: true })
-  writeFileSync(patchPath, lines.join(eol), 'utf8')
+  const tmpPath = path.join(dshHome, `.cordis.patch.yml.tmp-${process.pid}`)
+  writeFileSync(tmpPath, content, 'utf8')
+  try {
+    renameSync(tmpPath, patchPath)
+  } catch (err) {
+    // rename 失败（极端：目标被锁/跨设备等）清掉自己的临时件后原样抛出，
+    // 由调用方 warn 兜底——绝不让安装器炸宿主。
+    try { unlinkSync(tmpPath) } catch { /* 临时件清理失败无所谓，pid 命名不互踩 */ }
+    throw err
+  }
   return span !== null ? 'updated' : 'created'
 }
 
@@ -582,7 +665,9 @@ const SKILL_DIR_PREFIX = 'maoying-'
 
 /**
  * 递归收集目录下全部文件的相对路径（POSIX 分隔）。目录打不开/不存在返回
- * []，由调用方兜底。
+ * null——与「空目录返回 []」严格区分：源目录读失败时调用方必须跳过版本标记
+ * （否则标记谎报，下次启动误判无需重装）；子目录读失败整棵按失败算。
+ * @returns {string[]|null} 相对路径列表；读取失败返回 null
  */
 function listSkillFiles(dir, relBase = '') {
   const files = []
@@ -590,12 +675,15 @@ function listSkillFiles(dir, relBase = '') {
   try {
     entries = readdirSync(dir, { withFileTypes: true })
   } catch {
-    return files
+    return null
   }
   for (const entry of entries.sort((a, b) => a.name.localeCompare(b.name))) {
     const rel = relBase === '' ? entry.name : `${relBase}/${entry.name}`
-    if (entry.isDirectory()) files.push(...listSkillFiles(path.join(dir, entry.name), rel))
-    else if (entry.isFile()) files.push(rel)
+    if (entry.isDirectory()) {
+      const sub = listSkillFiles(path.join(dir, entry.name), rel)
+      if (sub === null) return null
+      files.push(...sub)
+    } else if (entry.isFile()) files.push(rel)
   }
   return files
 }
@@ -623,25 +711,17 @@ export function installSkills(dshHome, { version, logger = console } = {}) {
     const dstDir = path.join(skillsHome, entry.name)
     let touched = false
     try {
-      for (const rel of listSkillFiles(srcDir)) {
-        const src = path.join(srcDir, rel)
-        const dst = path.join(dstDir, rel)
-        let same = false
-        try {
-          same = existsSync(dst) && readFileSync(dst).equals(readFileSync(src))
-        } catch {
-          same = false
-        }
-        if (!same) {
-          mkdirSync(path.dirname(dst), { recursive: true })
-          copyFileSync(src, dst)
-          touched = true
-        }
+      const files = listSkillFiles(srcDir)
+      if (files === null) {
+        // 源目录读失败：这次连「已装」的版本标记都不能写——标记谎报会让下次
+        // 启动误判无需重装。throw 进下面的 per-skill catch，warn 留痕待自愈。
+        throw new Error('包内技能源目录不可读')
       }
-      const markerPath = path.join(dstDir, '.installed-version')
+      for (const rel of files) {
+        if (syncFileIfChanged(path.join(srcDir, rel), path.join(dstDir, rel))) touched = true
+      }
       try {
-        const current = existsSync(markerPath) && readFileSync(markerPath, 'utf8').trim() === version
-        if (!current) writeFileSync(markerPath, `${version}\n`, 'utf8')
+        writeMarkerIfChanged(dstDir, version)
       } catch (err) {
         logger.warn?.(`maoying-installer: 技能 ${entry.name} 的 .installed-version 标记写入失败（不影响技能本体）: ${err?.message ?? err}`)
       }
@@ -706,46 +786,98 @@ function isTrustedApiRequest(req, trustedHosts) {
   if (header(req.headers, 'sec-fetch-site') === 'cross-site') return false
   const origin = header(req.headers, 'origin')
   if (origin === undefined) return true
-  try { return new URL(origin).hostname === hostUrl.hostname } catch { return false }
+  // origin 与 Host 做 scheme+host+port 全串比较（URL.origin 对 URL.origin）：
+  // 只比 hostname 会放过「同站不同端口」的页面——sec-fetch-site 对它是
+  // same-site 而非 cross-site，http://localhost:9999 打本面板端口必须挡下。
+  // 威胁模型边界：这道门防外网页面借浏览器发跨源请求（CSRF/DNS-rebinding），
+  // 不防本机其他进程/内核——本机攻击面由「只听回环 + 部署信任表」约束。
+  try { return new URL(origin).origin === hostUrl.origin } catch { return false }
 }
 
+/** JSON 读体限额：5MB，对面板单章正文/设定批量写入量级余量充足。 */
+const BODY_LIMIT_BYTES = 5 * 1024 * 1024
+
+/** 读体 idle 超时：连续 30s 无任何数据到达即放弃（防挂起连接占住 handler）。 */
+const BODY_IDLE_MS = 30_000
+
 /**
- * 读 JSON 请求体（限额 5MB）。超限 413、非法 JSON 400——错误带 statusCode，
- * 外层 catch 据此回对应状态码；客户端提前断开时 reject（响应已发出的场景
- * Promise 已结算，reject 是无害 no-op）。
+ * 读 JSON 请求体（限额 5MB + 30s idle 超时）。约定：
+ *   - 超限 413 / idle 超时 408：本函数先向 res 回 JSON、再销毁连接（顺序反了
+ *     客户端只能收到 ECONNRESET，拿不到明确状态码），并 reject 带 responded
+ *     标记的错误——外层 catch 看到 responded 不再重复回包；
+ *   - 非法 JSON 400、客户端提前断开（close/aborted/流错误）499/400——错误都
+ *     带 statusCode，外层 catch 据此回状态码，绝不落到 500；
+ *   - 响应已发出的场景 Promise 已结算，后续 reject 是无害 no-op。
  */
-function readBody(req) {
+function readBody(req, res) {
   return new Promise((resolve, reject) => {
     const chunks = []
     let size = 0
+    let done = false
+
+    const rejectWith = (statusCode, message) => {
+      if (done) return
+      done = true
+      clearTimeout(idleTimer)
+      const err = new Error(message)
+      err.statusCode = statusCode
+      reject(err)
+    }
+
+    // 先响应后断开（413/408 专用）：响应写完再 destroy，客户端拿得到 JSON。
+    const respondThenClose = (statusCode, message) => {
+      if (done) return
+      done = true
+      clearTimeout(idleTimer)
+      json(res, statusCode, { ok: false, error: message })
+      req.destroy()
+      const err = new Error(message)
+      err.statusCode = statusCode
+      err.responded = true
+      reject(err)
+    }
+
+    // idle 超时：每收到一段数据重置一次；超时按 408 语义先回包再断开。
+    const idleTimer = setTimeout(() => respondThenClose(408, 'request body idle timeout (30s no data)'), BODY_IDLE_MS)
+
     req.on('data', (c) => {
+      idleTimer.refresh?.()
       size += c.length
-      if (size > 5 * 1024 * 1024) {
-        const err = new Error('request body too large')
-        err.statusCode = 413
-        reject(err)
-        req.destroy()
+      if (size > BODY_LIMIT_BYTES) {
+        respondThenClose(413, `request body too large (limit ${BODY_LIMIT_BYTES} bytes)`)
         return
       }
       chunks.push(c)
     })
     req.on('end', () => {
+      if (done) return
+      clearTimeout(idleTimer)
       try {
-        resolve(chunks.length ? JSON.parse(Buffer.concat(chunks).toString('utf8')) : {})
+        // done 置真必须在解析成功之后：先置真再走 catch，rejectWith 的 done
+        // 守卫会把 400 拒绝吞掉——promise 永不结算，handler 挂死（坏 JSON 必挂）。
+        const parsed = chunks.length ? JSON.parse(Buffer.concat(chunks).toString('utf8')) : {}
+        done = true
+        resolve(parsed)
       } catch {
-        const err = new Error('invalid JSON body')
-        err.statusCode = 400
-        reject(err)
+        rejectWith(400, 'invalid JSON body')
       }
     })
-    req.on('error', reject)
-    req.on('close', () => reject(new Error('request closed before body completed')))
-    req.on('aborted', () => reject(new Error('request aborted')))
+    req.on('error', (err) => {
+      // 流级错误（连接重置等）：无码按 400 语义兜底，不落 500
+      if (done) return
+      done = true
+      clearTimeout(idleTimer)
+      if (!Number.isInteger(err?.statusCode)) err.statusCode = 400
+      reject(err)
+    })
+    req.on('close', () => rejectWith(499, 'request closed before body completed'))
+    req.on('aborted', () => rejectWith(499, 'request aborted'))
   })
 }
 
 function json(res, status, payload) {
-  const text = JSON.stringify(payload, null, 2)
+  // 无缩进序列化：状态快照等响应可到百 KB 量级，缩进纯增体积（客户端自行格式化）
+  const text = JSON.stringify(payload)
   res.writeHead(status, {
     'content-type': 'application/json; charset=utf-8',
     'content-length': Buffer.byteLength(text),
@@ -766,6 +898,20 @@ function sanitizeMessage(message) {
   return text
 }
 
+/**
+ * 递归脱敏：结构里所有字符串值过一遍 sanitizeMessage（绝对路径换 ~）。host-debug
+ * 响应用——trace.via / runtime.argv / execPath / cwd 等带本机绝对路径的字段，
+ * 与错误 message 同一纪律：诊断信息照给，本机路径不出门。
+ */
+function sanitizeDeep(value) {
+  if (typeof value === 'string') return sanitizeMessage(value)
+  if (Array.isArray(value)) return value.map(sanitizeDeep)
+  if (value !== null && typeof value === 'object') {
+    return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, sanitizeDeep(v)]))
+  }
+  return value
+}
+
 // 宿主热切换竞态兜底：「禁用→启用」等操作会重建插件条目纤维，新 apply 先
 // 跑、旧实例的路由注销异步落地，注册瞬间旧路由常仍在表里，webServer.register
 // 对同 (kind, path) 抛 duplicate。只对 duplicate prefix route 这一种错误短
@@ -777,7 +923,10 @@ export async function registerPrefixRouteWithRetry(webServer, route, { attempts 
   let lastError
   for (let attempt = 0; attempt < attempts; attempt++) {
     try {
-      return webServer.register(route)
+      // 必须 await：宿主 register 可能返回 rejected promise（异步校验路径），
+      // 不 await 则 rejection 接不住（unhandled rejection），duplicate 短重试
+      // 形同虚设；await 对同步抛出的路径行为不变，兼容保留。
+      return await webServer.register(route)
     } catch (err) {
       if (!DUPLICATE_PREFIX_ROUTE_RE.test(String(err?.message ?? ''))) throw err
       lastError = err
@@ -788,7 +937,7 @@ export async function registerPrefixRouteWithRetry(webServer, route, { attempts 
 }
 
 /**
- * 注册创作台全部路由（docs/creator-panel.md §2 的 8 条）。返回宿主 disposer；
+ * 注册创作台全部路由（docs/creator-panel.md §2 的 11 条）。返回宿主 disposer；
  * webServer 缺席（非 web 部署）时抛错，由 apply 侧统一降级为 warn。
  */
 export async function registerCreatorRoutes(ctx) {
@@ -811,9 +960,10 @@ export async function registerCreatorRoutes(ctx) {
         json(res, 403, { error: 'forbidden' })
         return
       }
-      const url = new URL(req.url, 'http://dsh.internal')
-      const route = url.pathname.replace(/^\/api\/maoying\/?/, '')
       try {
+        // url/route 解析进 try：畸形 requestTarget 不至于绕过错误通道裸崩
+        const url = new URL(req.url, 'http://dsh.internal')
+        const route = url.pathname.replace(/^\/api\/maoying\/?/, '')
         // ── 静态样式：面板 CSS 正文（lib/base.css）按请求现读下发 ──────────
         // 客户端只注入 <link href="/api/maoying/client.css">，正文现读——
         // 改样式无需重启，GUI 刷新即生效（no-cache）。同前缀、已被围栏把关。
@@ -873,16 +1023,18 @@ export async function registerCreatorRoutes(ctx) {
               registryDump.presets = jsonSafe(rows)
             }
           } catch (e) { registryDump.error = String(e?.message ?? e) }
+          // 出口统一过 sanitizeDeep：trace.via / argv / execPath / cwd 带本机
+          // 绝对路径，诊断照给、路径脱敏（与错误 message 同一纪律）。
           json(res, 200, {
             ok: true,
             hostVersion: dbg.version,
-            trace: dbg.trace,
+            trace: sanitizeDeep(dbg.trace),
             shape,
             registry: registryDump,
             runtime: {
-              argv: process.argv,
-              execPath: process.execPath,
-              cwd: process.cwd(),
+              argv: sanitizeDeep(process.argv),
+              execPath: sanitizeMessage(process.execPath),
+              cwd: sanitizeMessage(process.cwd()),
               electron: process.versions?.electron ?? null,
               node: process.version,
             },
@@ -915,35 +1067,35 @@ export async function registerCreatorRoutes(ctx) {
         }
 
         if (route === 'chapter-status' && req.method === 'POST') {
-          const body = await readBody(req)
+          const body = await readBody(req, res)
           const novelDir = resolveNovelRoot(body.path, ctx.workspaceRegistry)
           json(res, 200, mutateChapterStatus(novelDir, body.file, body.status))
           return
         }
 
         if (route === 'foreshadow-status' && req.method === 'POST') {
-          const body = await readBody(req)
+          const body = await readBody(req, res)
           const novelDir = resolveNovelRoot(body.path, ctx.workspaceRegistry)
           json(res, 200, mutateForeshadowStatus(novelDir, body.id, body.status))
           return
         }
 
         if (route === 'phase' && req.method === 'POST') {
-          const body = await readBody(req)
+          const body = await readBody(req, res)
           const novelDir = resolveNovelRoot(body.path, ctx.workspaceRegistry)
           json(res, 200, mutatePhase(novelDir, body.phase))
           return
         }
 
         if (route === 'project-save' && req.method === 'POST') {
-          const body = await readBody(req)
+          const body = await readBody(req, res)
           const novelDir = resolveNovelRoot(body.path, ctx.workspaceRegistry)
           json(res, 200, mutateProject(novelDir, body.values))
           return
         }
 
         if (route === 'rebuild-index' && req.method === 'POST') {
-          const body = await readBody(req)
+          const body = await readBody(req, res)
           const novelDir = resolveNovelRoot(body.path, ctx.workspaceRegistry)
           json(res, 200, rebuildIndex(novelDir))
           return
@@ -952,8 +1104,11 @@ export async function registerCreatorRoutes(ctx) {
         json(res, 404, { ok: false, error: `no such route: ${req.method} /api/maoying/${route}` })
       } catch (err) {
         // 错误原文（可能带本机绝对路径）留日志；对外 message 先脱敏。读体的
-        // 413/400 带 statusCode，按其状态码回；其余业务错误自带码，裸异常 500。
+        // 413/408 已由 readBody 先回包再断开（err.responded），这里只留日志不
+        // 重复回包；其余按 statusCode 回（读体断开 499/400、业务错误自带码），
+        // 裸异常 500。
         ctx.logger?.warn?.('maoying 创作台: 请求处理失败: ' + String(err?.message ?? err))
+        if (err?.responded) return
         json(res, Number.isInteger(err?.statusCode) ? err.statusCode : 500, {
           ok: false,
           error: sanitizeMessage(err?.message ?? String(err)),
@@ -984,30 +1139,24 @@ export function ensurePresetInstalled(ctx = {}) {
   const sourceDir = path.join(PLUGIN_ROOT, 'presets', PRESET_ID)
   const presetDir = path.join(home, '.agent-presets', PRESET_ID)
 
-  // 1) 预设文件：内容一致不写（逐字节比较），变化才覆盖
+  // 1) 预设文件：内容一致不写（逐字节比较），变化才覆盖。copyFileSync 必须在
+  //    per-file try 之内——单文件失败（如目标只读 EACCES）只 warn，不能冲出
+  //    主流程把后面的版本标记/技能落盘/托管块全跳过（违背「各自可失败」；
+  //    失败文件下次启动自愈重试）。
   const copied = []
   mkdirSync(presetDir, { recursive: true })
   for (const file of PRESET_FILES) {
-    const src = path.join(sourceDir, file)
-    const dst = path.join(presetDir, file)
-    let same = false
     try {
-      same = existsSync(dst) && readFileSync(dst).equals(readFileSync(src))
-    } catch {
-      same = false
-    }
-    if (!same) {
-      copyFileSync(src, dst)
-      copied.push(file)
+      if (syncFileIfChanged(path.join(sourceDir, file), path.join(presetDir, file))) copied.push(file)
+    } catch (err) {
+      logger.warn?.(`maoying-installer: 预设文件 ${file} 复制失败（已跳过，不影响其余文件）: ${err?.message ?? err}`)
     }
   }
 
   // 2) 版本标记：一致不重写（mtime 也是产物，少动一次是一次）
-  const markerPath = path.join(presetDir, '.installed-version')
   let markerCurrent = false
   try {
-    markerCurrent = existsSync(markerPath) && readFileSync(markerPath, 'utf8').trim() === version
-    if (!markerCurrent) writeFileSync(markerPath, `${version}\n`, 'utf8')
+    markerCurrent = !writeMarkerIfChanged(presetDir, version)
   } catch (err) {
     logger.warn?.(`maoying-installer: .installed-version 标记写入失败（不影响预设本体）: ${err?.message ?? err}`)
   }
@@ -1045,7 +1194,7 @@ export function ensurePresetInstalled(ctx = {}) {
   }
 
   const blockText = stringifyManagedBlock(composed.yaml, composed.rows)
-  const blockAction = upsertManagedBlock(home, blockText, { versionMarkerCurrent: markerCurrent })
+  const blockAction = upsertManagedBlock(home, blockText, { versionMarkerCurrent: markerCurrent, logger })
 
   if (copied.length > 0) {
     logger.info?.(`maoying-installer: 预设文件已更新 ${PRESET_ID}: ${copied.join(', ')}`)
@@ -1085,13 +1234,10 @@ export function apply(ctx = {}, _config = {}) {
   // 按宿主版本自动选形状，所选形态带在安装日志里），不再需要降级提示。
 
   // 创作台路由（三期）：与安装段彼此独立——注册失败只 warn，面板不可用不
-  // 拖累安装器语义。注册是异步的（含 duplicate 短重试），这里挂 .catch 兜住
-  // 异步失败；同步抛错走外层 try/catch，两条路都不让异常冒出 apply。
-  try {
-    registerCreatorRoutes(ctx).catch((error) => {
-      logger.warn?.(`毛颖创作台路由注册失败（面板不可用，其余功能不受影响）: ${error?.message ?? error}`)
-    })
-  } catch (error) {
+  // 拖累安装器语义。registerCreatorRoutes 是 async 函数，同步阶段不可能 throw
+  //（异常一律进 rejected promise），外层 try 对它是永假防御——只挂 .catch
+  // 一条兜底通道即可，异常不会冒出 apply。
+  registerCreatorRoutes(ctx).catch((error) => {
     logger.warn?.(`毛颖创作台路由注册失败（面板不可用，其余功能不受影响）: ${error?.message ?? error}`)
-  }
+  })
 }

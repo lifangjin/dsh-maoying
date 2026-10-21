@@ -8,7 +8,8 @@
  * （6 行、id 唯一、config.id 与行 id 后缀一致、!!js 仅 process.platform 两种）。
  *
  * YAML 解析借 /tmp/yamlcheck 的 yaml 包（与安装器运行时同款 v2）；本机没有该
- * 目录时相应断言整体跳过（skip），不误报。
+ * 目录时结构级断言整体跳过（skip），不误报——但 persona 双源一致性另有字符串级
+ * 降级断言兜底（直接对两文件原文做块标量抽取比对），不随 yaml 包缺席失效。
  */
 
 import test from 'node:test'
@@ -42,11 +43,13 @@ function loadTestYaml() {
 
 const yaml = loadTestYaml()
 
+/** v1 组合源原文（无 yaml 包时的字符串级降级比对用）。 */
+const v1Text = readFileSync(path.join(PLUGIN_ROOT, 'presets/maoying/agent.cordis.yml'), 'utf8')
 /** v1 组合源解析后的 18 行。 */
 const v1Rows = yaml ? parseAgentPlugins(yaml, readFileSync(path.join(PLUGIN_ROOT, 'presets/maoying/agent.cordis.yml'), 'utf8')) : null
 /** v2 组合源解析后的 6 条 preset 声明行。 */
 const v2Rows = yaml ? parsePresetRows(yaml, readFileSync(path.join(PLUGIN_ROOT, 'presets/maoying/agent.cordis.v2.yml'), 'utf8')) : null
-/** v2 原文（!!js grep 断言用，不需要 yaml 包）。 */
+/** v2 原文（!!js grep 断言与无 yaml 包时的字符串级降级比对用）。 */
 const v2Text = readFileSync(path.join(PLUGIN_ROOT, 'presets/maoying/agent.cordis.v2.yml'), 'utf8')
 
 const ROLES = ['outline', 'write', 'review', 'lore', 'research']
@@ -62,6 +65,38 @@ function v1DelegationRows() {
 
 /** v2 按 config.id 取 preset 行。 */
 const v2Preset = (id) => v2Rows.find((r) => r.config.id === id)
+
+/**
+ * 字符串级降级抽取：从原始文本按 `<key>: |-` 标记行取块标量——收集标记行之后
+ * 所有「空行或缩进更深」的行，去公共缩进后返回字符串数组。只认标记行形态，
+ * 块外一概不看，保守而不猜结构；块内容为空返回 null（调用方据此报错，不静默）。
+ */
+function extractBlockScalars(text, key) {
+  const marker = new RegExp(`^(\\s*)${key}: \\|-\\s*$`)
+  const lines = text.split(/\r?\n/)
+  const blocks = []
+  for (let i = 0; i < lines.length; i++) {
+    const m = marker.exec(lines[i])
+    if (m === null) continue
+    const markerIndent = m[1].length
+    const body = []
+    for (let j = i + 1; j < lines.length; j++) {
+      const line = lines[j]
+      if (line.trim() === '') {
+        body.push('')
+        continue
+      }
+      if (line.match(/^[ \t]*/)[0].length <= markerIndent) break
+      body.push(line)
+    }
+    const nonBlank = body.filter((l) => l.trim() !== '')
+    if (nonBlank.length === 0) return null
+    const minIndent = Math.min(...nonBlank.map((l) => l.match(/^[ \t]*/)[0].length))
+    while (body.length > 0 && body[body.length - 1].trim() === '') body.pop()
+    blocks.push(body.map((l) => (l.trim() === '' ? '' : l.slice(minIndent))).join('\n'))
+  }
+  return blocks
+}
 
 // ── v2 结构自检 ─────────────────────────────────────────────────────────────
 
@@ -187,7 +222,7 @@ const CAPABILITY_OF_ROW = {
 const EXPECTED_V1_ALLOW = {
   outline: ['read', 'read_image', 'glob', 'grep', 'write', 'edit', 'bash', 'skill', 'ask_user_question', 'todo_write'],
   write: ['read', 'read_image', 'glob', 'grep', 'write', 'edit', 'bash', 'skill', 'ask_user_question', 'todo_write'],
-  review: ['read', 'read_image', 'glob', 'grep', 'todo_write', 'ask_user_question'],
+  review: ['read', 'read_image', 'glob', 'grep', 'skill', 'todo_write', 'ask_user_question'],
   lore: ['read', 'glob', 'grep', 'write', 'edit', 'bash', 'skill', 'ask_user_question', 'todo_write'],
   research: ['web_search', 'web_fetch', 'glob', 'grep', 'read', 'write', 'bash', 'ask_user_question', 'todo_write'],
 }
@@ -235,3 +270,18 @@ for (const role of ROLES) {
     }
   })
 }
+
+// ── 无 yaml 包时的字符串级降级（防一致性把关在干净机器上静默失效）────────────
+
+test('降级（无 yaml 包）：v1/v2 角色 persona 原始文本抽取逐字节一致', (t) => {
+  if (yaml) return t.skip('本机有 yaml 包，结构级断言已覆盖；字符串级降级仅在其缺席时启用')
+  const v1Personas = extractBlockScalars(v1Text, 'persona')
+  const v2Prefixes = extractBlockScalars(v2Text, 'prefix')
+  // 抽数量不对 = 抽取器与文件形态脱节，报错而非静默放过
+  assert.ok(Array.isArray(v1Personas) && v1Personas.length === ROLES.length, `v1 应抽出 ${ROLES.length} 段角色 persona，实得 ${v1Personas && v1Personas.length}`)
+  // v2 的 prefix 块含主编 persona（第 1 段），角色段取其后 5 段；v1/v2 文件内角色顺序一致
+  assert.ok(Array.isArray(v2Prefixes) && v2Prefixes.length === ROLES.length + 1, `v2 应抽出 ${ROLES.length + 1} 段 prefix（主编 + 5 角色），实得 ${v2Prefixes && v2Prefixes.length}`)
+  for (let i = 0; i < ROLES.length; i++) {
+    assert.equal(v1Personas[i], v2Prefixes[i + 1], `[${ROLES[i]}] 降级比对：v1 persona 与 v2 prefix 原始文本不一致——v2 必须逐字同步 v1`)
+  }
+})

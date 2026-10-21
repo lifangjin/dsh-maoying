@@ -93,7 +93,7 @@ planted ──→ progressing ──→ resolved
 `kind` 四类：`clue`（线索）`red-herring`（误导）`deduction`（推理）`question`（悬问）。`resolved: true` 表示该线索的戏剧功能已兑现——误导被揭示、悬问被解答、推理被验证。红鲱鱼（red-herring）必须有意埋设，`content` 里写明「误导什么、真答案是什么」，防止审校误报。
 
 ### research/ 与 exports/
-`research/<topic>.md` 由素材调研员（research 角色）独占写入；frontmatter 记 `topic` 与 `sources`（URL 列表），body 是可直接用于写作的结论要点，区分史实/通说/演义并逐条附来源。`exports/` 一期只建目录，导出能力在二期。
+`research/<topic>.md` 由素材调研员（research 角色）独占写入；frontmatter 记 `topic` 与 `sources`（URL 列表），body 是可直接用于写作的结论要点，区分史实/通说/演义并逐条附来源。`exports/` 是 `maoying export` 的默认产物目录（`--out` 可改到别处）：`maoying export [dir] --format md|txt|epub`，文件名 `<书名>-<YYYYMMDD>.<ext>`，同名自动加序号不覆盖。
 
 ### 作者稿圣域（共创模式）
 `chapters/` 目录的正文唯作者可改。author-draft / co-write 的 author 章节上，agent（主编与帮手）只可更新 frontmatter 的 `summary` 与五维字段，且以建议为先、动笔前说明；review 一律只出意见清单不改稿。`ai-draft` 章节不受此限，write 照旧。
@@ -113,7 +113,7 @@ volumes:
     title: 第一卷 北境风雪
     summary: 卷定位一句话
     chapters:
-      - {num: 1, title: 雪夜来客, status: accepted, words: 3210, summary: 一句话梗概}
+        - {num: 1, title: 雪夜来客, status: accepted, words: 3210, summary: 一句话梗概}
 orphans:
   - {volume: v02, num: 5, title: 未归卷章, status: writing, words: 1200, summary: ...}
 total: {chapters: 21, words: 65210, accepted: 18}
@@ -128,6 +128,9 @@ total: {chapters: 21, words: 65210, accepted: 18}
 
 - `maoying init` 生成上述全部骨架（已存在文件绝不覆盖）；
 - `maoying stats` 读 project.yml + chapters/，报告逐章 CJK 字数、状态分布、当前 phase；
-- `maoying index` 是第 3 节重建逻辑的人工兜底（主编的日常路径是让 lore 角色直接重建）。
+- `maoying index` 是第 3 节重建逻辑的人工兜底（主编的日常路径是让 lore 角色直接重建）；
+- `maoying export [dir]` 导出全书为 md / txt / epub（默认 md；`--out` 改输出目录，缺省 `<dir>/exports/`）；
+- `maoying brief [dir] <chapter>` 组装单章写作卡（章纲 + 前章结尾 + 出场角色卡 + 活跃伏笔）；`--out <文件>` 落盘，缺省打到 stdout；
+- `maoying check [dir]` 静态体检（不调模型）：frontmatter 完整性、枚举值、章号卷号一致、伏笔章号引用、时间线年份、关系卡引用。
 
-三者都零依赖，解析器只认本规范的两类形态（平键映射、顶层数组）；深度嵌套不在支持范围——这是规范约束的执行手段之一。
+六者都零依赖，解析器只认本规范的两类形态（平键映射、顶层数组）；深度嵌套不在支持范围——这是规范约束的执行手段之一。
