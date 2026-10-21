@@ -214,12 +214,9 @@ test('parseStateSnapshot：未初始化（无 project.yml）found=false 其余�
   assert.deepEqual(snap, { ok: true, root: path.resolve(root), novelDir: path.resolve(novel), found: false, warnings: [] })
 })
 
-test('parseStateSnapshot：yaml 包可用时真解析（条件执行，本机借不到就跳过）', () => {
+test('parseStateSnapshot：yaml 包可用时真解析（条件执行，本机借不到就跳过）', (t) => {
   const yamlLib = loadYamlLib(TEST_HOME)
-  if (!yamlLib) {
-    test.skip('本机无可借的 yaml 包')
-    return
-  }
+  if (!yamlLib) return t.skip('本机无可借的 yaml 包')
   const root = makeTmpRoot()
   const novel = buildSampleNovel(root)
   const snap = parseStateSnapshot(novel, { yamlLib })
