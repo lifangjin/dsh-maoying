@@ -526,6 +526,22 @@ html[data-dsh-maoying-active]:not([data-dsh-mnemon-active]):not([data-dsh-taskbo
   text-overflow: ellipsis;
 }
 
+/* 孤儿章纲「未建章」徽章（0.1.15：按单写作兼容未建章章纲，章纲先于正文）*/
+.myt-noChapterBadge {
+  flex: none;
+  padding: 0 6px;
+  border: 1px solid color-mix(in srgb, var(--dsw-alias-state-business-primary) 40%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--dsw-alias-state-business-primary) 12%, transparent);
+  color: var(--dsw-alias-state-business-primary);
+  font-size: 10px;
+  line-height: 14px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+/* 孤儿章纲行内的「建章」动作按钮：沿用伏笔卡 fsActions 的紧凑尺寸 */
+.myt-writeOrderRow .myt-btn { flex: none; padding: 2px 8px; font-size: 11px; line-height: 16px; }
+
 /* ── 角色 tab：卡墙 + 全卡弹层 ─────────────────────────────────────────── */
 .myt-charWall { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 12px; }
 .myt-charCard { cursor: pointer; gap: 8px; text-align: left; }

@@ -63,6 +63,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import {
+  createChapterFromOutline,
   listWorkspaces,
   mutateChapterStatus,
   mutateForeshadowStatus,
@@ -70,6 +71,7 @@ import {
   mutateProject,
   parseStateSnapshot,
   readChapter,
+  readOutlineFile,
   rebuildIndex,
   resolveNovelRoot,
 } from './lib/panel-core.mjs'
@@ -940,7 +942,7 @@ export async function registerPrefixRouteWithRetry(webServer, route, { attempts 
 }
 
 /**
- * 注册创作台全部路由（docs/creator-panel.md §2 的 13 条）。返回宿主 disposer；
+ * 注册创作台全部路由（docs/creator-panel.md §2 的 15 条）。返回宿主 disposer；
  * webServer 缺席（非 web 部署）时抛错，由 apply 侧统一降级为 warn。
  */
 export async function registerCreatorRoutes(ctx) {
@@ -1097,10 +1099,29 @@ export async function registerCreatorRoutes(ctx) {
           return
         }
 
+        if (route === 'outline' && req.method === 'GET') {
+          // 章纲全文（0.1.15，章纲弹层用）：file 只认 outlines/ 下合 vXX-cXXX
+          // 规范的纯文件名；响应 { ok, file, words, body }——章纲纯 markdown
+          // 无 frontmatter，body 即原文，words 为 CJK 计数。
+          const novelDir = resolveNovelRoot(url.searchParams.get('path'), ctx.workspaceRegistry)
+          json(res, 200, readOutlineFile(novelDir, url.searchParams.get('file')))
+          return
+        }
+
         if (route === 'chapter-status' && req.method === 'POST') {
           const body = await readBody(req, res)
           const novelDir = resolveNovelRoot(body.path, ctx.workspaceRegistry)
           json(res, 200, mutateChapterStatus(novelDir, body.file, body.status))
+          return
+        }
+
+        if (route === 'chapter-create' && req.method === 'POST') {
+          // 从章纲建章（0.1.15，按单写作的未建章章纲一键建章）：chapters/
+          // 落 status=pending 空章节（frontmatter 按模板、正文待写），建后走
+          // 既有 pending 流转；已存在 409、章纲缺失 404、非章纲文件名 422。
+          const body = await readBody(req, res)
+          const novelDir = resolveNovelRoot(body.path, ctx.workspaceRegistry)
+          json(res, 200, createChapterFromOutline(novelDir, body.file))
           return
         }
 

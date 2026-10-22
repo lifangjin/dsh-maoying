@@ -37,9 +37,11 @@ test.after(() => {
 })
 
 const {
+  createChapterFromOutline,
   listWorkspaces,
   parseStateSnapshot,
   readChapter,
+  readOutlineFile,
   resolveNovelRoot,
   mutateChapterStatus,
   mutateForeshadowStatus,
@@ -48,6 +50,7 @@ const {
   rebuildIndex,
   PanelError,
 } = await import('../lib/panel-core.mjs')
+const { FIVE_DIM_KEYS } = await import('../lib/novel-parse.mjs')
 const { loadYamlLib } = await import('../lib/yaml-loader.mjs')
 
 /** 状态码断言助手：fn 必须抛出带指定 statusCode 的 PanelError。 */
@@ -561,6 +564,68 @@ test('readChapter：返回 frontmatter 对象 + 正文；穿越 403；缺文件 
 
   assertFails(() => readChapter(novel, '../project.yml', { yamlLib: null }), 403)
   assertFails(() => readChapter(novel, 'nope.md', { yamlLib: null }), 404)
+})
+
+test('readOutlineFile：章纲全文 { ok, file, words, body }；缺文件 404；非章纲文件名 422', () => {
+  const root = makeTmpRoot()
+  const novel = buildSampleNovel(root)
+  // 孤儿章纲（chapters/ 无对应文件）同样可读——章纲弹层的主要取数路径
+  const outline = readOutlineFile(novel, 'v01-c003.md')
+  assert.deepEqual(Object.keys(outline).sort(), ['body', 'file', 'ok', 'words'])
+  assert.equal(outline.ok, true)
+  assert.equal(outline.file, 'v01-c003.md')
+  assert.ok(outline.words > 0)
+  assert.ok(outline.body.includes('冻河'))
+
+  assertFails(() => readOutlineFile(novel, 'v01-c099.md'), 404, '章纲不存在')
+  writeFileSync(path.join(novel, 'outlines', 'scratch.md'), '随手记，不合 vXX-cXXX 命名\n', 'utf8')
+  assertFails(() => readOutlineFile(novel, 'scratch.md'), 422, '非章纲文件名')
+  assertFails(() => readOutlineFile(novel, 'v01-c003.txt'), 422, '非章纲文件名')
+  assertFails(() => readOutlineFile(novel, '../project.yml'), 403) // 穿越在 safeFileName 一刀切
+})
+
+test('createChapterFromOutline：落盘 pending 空章（frontmatter 各键 + 标题「章纲」后缀剥离）；重复/非法拒', () => {
+  const root = makeTmpRoot()
+  const novel = buildSampleNovel(root)
+  // 章纲标题带大纲师惯用的「章纲」后缀：建章时应剥离
+  writeFileSync(path.join(novel, 'outlines', 'v01-c005.md'), '# 第 5 章 雪夜异客 章纲\n\n- 本章目标：冻河异客登场。\n', 'utf8')
+
+  assert.deepEqual(createChapterFromOutline(novel, 'v01-c005.md'), { ok: true, file: 'v01-c005.md', title: '第 5 章 雪夜异客' })
+
+  // 落盘内容：frontmatter 各键逐一对（回退解析，确定性），正文留空待写
+  const chapter = readChapter(novel, 'v01-c005.md', { yamlLib: null })
+  assert.equal(chapter.ok, true)
+  assert.equal(chapter.frontmatter.volume, 'v01')
+  assert.equal(chapter.frontmatter.num, 5)
+  assert.equal(chapter.frontmatter.title, '第 5 章 雪夜异客')
+  assert.equal(chapter.frontmatter.status, 'pending')
+  assert.equal(chapter.frontmatter.summary, '')
+  for (const k of FIVE_DIM_KEYS) assert.equal(chapter.frontmatter[k], '', `五维键 ${k} 应留空`)
+  assert.equal(chapter.body.trim(), '', '正文应留空待写')
+  // 快照联动：新章进 chapters 清单且 status=pending（建后走既有 pending 流转）
+  const snap = parseStateSnapshot(novel, { yamlLib: null })
+  const created = snap.chapters.find((c) => c.file === 'v01-c005.md')
+  assert.ok(created, '新章应进快照 chapters 清单')
+  assert.equal(created.status, 'pending')
+
+  // 已存在 409（先到先建，绝不覆盖既有正文——夹具既有的 v01-c001 同理）
+  assertFails(() => createChapterFromOutline(novel, 'v01-c005.md'), 409, '章节已存在')
+  assertFails(() => createChapterFromOutline(novel, 'v01-c001.md'), 409)
+  // 章纲缺失 404；非章纲文件名 422
+  assertFails(() => createChapterFromOutline(novel, 'v01-c099.md'), 404)
+  assertFails(() => createChapterFromOutline(novel, 'scratch.md'), 422)
+})
+
+test('createChapterFromOutline：chapters/ 目录缺失时自动补建（测试夹具/手工项目兜底）', () => {
+  const root = makeTmpRoot()
+  const novel = path.join(root, 'novel')
+  mkdirSync(path.join(novel, 'outlines'), { recursive: true })
+  writeFileSync(path.join(novel, 'outlines', 'v02-c001.md'), '# 卷二开篇 章纲\n\n- 本章目标：新卷起手。\n', 'utf8')
+  const res = createChapterFromOutline(novel, 'v02-c001.md')
+  assert.equal(res.ok, true)
+  assert.equal(res.title, '卷二开篇')
+  assert.ok(existsSync(path.join(novel, 'chapters', 'v02-c001.md')), 'chapters/ 目录应自动补建')
+  assert.ok(readFileSync(path.join(novel, 'chapters', 'v02-c001.md'), 'utf8').startsWith('---\n'), '落盘应为 frontmatter 围栏开头')
 })
 
 test('parseStateSnapshot：outlines/ 目录不存在 → 空数组且不告警（老项目兼容）', () => {

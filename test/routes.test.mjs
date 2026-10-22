@@ -5,8 +5,9 @@
  *
  * 覆盖：信任围栏（Host / sec-fetch-site / origin 完整 scheme+host+port 同源
  * 校验 / trustedHosts）、state 契约字段、chapter-status 流转与防穿越、
- * foreshadow-status、phase、rebuild-index、chapter 读取、404、413（响应体
- * 可达：先回包后断开）、迭代路由接线（project-save 改键与越枚举 422、
+ * foreshadow-status、phase、rebuild-index、chapter 读取、outline 章纲全文
+ * 读取、chapter-create 从章纲建章、404、413（响应体可达：先回包后断开）、
+ * 迭代路由接线（project-save 改键与越枚举 422、
  * update-check 响应形状、host-debug 五级探针与脱敏、非法 JSON body 400），
  * 以及 registerPrefixRouteWithRetry 的重试语义（同步抛与 rejected promise
  * 两条路）和 apply() 末尾「路由注册失败只 warn」的降级路径。
@@ -226,6 +227,63 @@ test('chapter：返回 frontmatter 对象与正文全文', async () => {
     headers: LOOPBACK,
   })
   assert.equal(traversal.status, 403)
+})
+
+test('outline：章纲全文 200；孤儿章纲照读；缺文件 404；非章纲文件名 422；防穿越 403', async () => {
+  const env = makeEnv()
+  const handler = await registeredHandler(env)
+  const get = (file) => call(handler, {
+    url: `/api/maoying/outline?path=${encodeURIComponent(env.root)}&file=${encodeURIComponent(file)}`,
+    headers: LOOPBACK,
+  })
+  const state = await get('v01-c003.md') // 孤儿章纲：chapters/ 无对应文件（弹层主取数路径）
+  assert.equal(state.status, 200)
+  const payload = JSON.parse(state.raw)
+  assert.deepEqual(Object.keys(payload).sort(), ['body', 'file', 'ok', 'words'])
+  assert.equal(payload.ok, true)
+  assert.equal(payload.file, 'v01-c003.md')
+  assert.ok(payload.words > 0)
+  assert.ok(payload.body.includes('冻河'))
+  assert.equal((await get('v01-c099.md')).status, 404)
+  assert.equal((await get('scratch.md')).status, 422)
+  assert.equal((await get('v01-c003.txt')).status, 422)
+  assert.equal((await get('../project.yml')).status, 403)
+})
+
+test('chapter-create：从章纲建章 200 落盘 pending 空章；重复建章 409；防穿越 403', async () => {
+  const env = makeEnv()
+  const handler = await registeredHandler(env)
+  const post = (file) => call(handler, {
+    method: 'POST', url: '/api/maoying/chapter-create', headers: LOOPBACK,
+    body: { path: env.root, file },
+  })
+  const state = await post('v01-c003.md')
+  assert.equal(state.status, 200)
+  const payload = JSON.parse(state.raw)
+  assert.equal(payload.ok, true)
+  assert.equal(payload.file, 'v01-c003.md')
+  // 夹具章纲标题「第三章 冻河追踪 章纲（正文未写）」结尾不是「章纲」二字 → 不剥离
+  assert.equal(payload.title, '第三章 冻河追踪 章纲（正文未写）')
+  const onDisk = readFileSync(path.join(env.root, 'novel', 'chapters', 'v01-c003.md'), 'utf8')
+  assert.ok(onDisk.startsWith('---\n'), '落盘应为 frontmatter 围栏开头')
+  assert.ok(onDisk.includes('status: pending'))
+  assert.ok(onDisk.includes('title: 第三章 冻河追踪 章纲（正文未写）'))
+  // state 快照联动：新章 pending 进 chapters 清单
+  const snap = await call(handler, {
+    url: `/api/maoying/state?path=${encodeURIComponent(env.root)}`,
+    headers: LOOPBACK,
+  })
+  const created = JSON.parse(snap.raw).chapters.find((c) => c.file === 'v01-c003.md')
+  assert.ok(created, '新章应进 state.chapters')
+  assert.equal(created.status, 'pending')
+  // 重复建章 409（先到先建不覆盖）；夹具既有章同理
+  const dup = await post('v01-c003.md')
+  assert.equal(dup.status, 409)
+  assert.equal(JSON.parse(dup.raw).ok, false)
+  assert.equal((await post('v01-c001.md')).status, 409)
+  // 防穿越 403 / 缺文件 404
+  assert.equal((await post('../project.yml')).status, 403)
+  assert.equal((await post('v01-c099.md')).status, 404)
 })
 
 test('workspaces：探测 hasNovel', async () => {
