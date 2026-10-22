@@ -553,9 +553,15 @@ html[data-dsh-maoying-active]:not([data-dsh-mnemon-active]):not([data-dsh-taskbo
 .myt-charMeta { font-size: 11px; color: var(--dsw-alias-label-tertiary); }
 .myt-charLine { font-size: 12px; line-height: 18px; color: var(--dsw-alias-label-secondary); overflow-wrap: anywhere; }
 .myt-charLabel { flex: none; font-size: 11px; color: var(--dsw-alias-label-tertiary); }
+/* 弹层锚区居中：--myt-mask-* 由 client.js 持续测量面板容器视口矩形（已除
+   面板 zoom 的 CSS px，mask 自身带 zoom）写入；--myt-anchor-* 同源视觉 px。
+   变量缺省回落 0 = 全窗，行为同旧版。 */
 .myt-modalMask {
   position: fixed;
-  inset: 0;
+  top: var(--myt-mask-top, 0px);
+  right: var(--myt-mask-right, 0px);
+  bottom: var(--myt-mask-bottom, 0px);
+  left: var(--myt-mask-left, 0px);
   z-index: 80;
   display: flex;
   align-items: center;
@@ -566,8 +572,8 @@ html[data-dsh-maoying-active]:not([data-dsh-mnemon-active]):not([data-dsh-taskbo
 .myt-modalCard {
   display: flex;
   flex-direction: column;
-  width: min(520px, 94vw);
-  max-height: 84vh;
+  width: min(520px, 100%); /* 百分比对 mask 内容盒解析：随锚区缩放，不再溢出中栏 */
+  max-height: 100%;
   border: 1px solid var(--dsw-alias-border-l2);
   border-radius: 16px;
   background: var(--dsw-alias-bg-layer-2);
@@ -674,8 +680,8 @@ html[data-dsh-maoying-active]:not([data-dsh-mnemon-active]):not([data-dsh-taskbo
 /* ── toast（fixed 悬浮，host 不挡点击）─────────────────────────────────── */
 .myt-toastHost {
   position: fixed;
-  left: 50%;
-  bottom: 28px;
+  left: calc(var(--myt-anchor-left, 0px) + var(--myt-anchor-width, 100vw) / 2);
+  bottom: calc(var(--myt-anchor-bottom, 0px) + 28px);
   transform: translateX(-50%);
   z-index: 90;
   display: flex;
@@ -688,7 +694,7 @@ html[data-dsh-maoying-active]:not([data-dsh-mnemon-active]):not([data-dsh-taskbo
   display: flex;
   align-items: flex-start;
   gap: 8px;
-  max-width: min(520px, 86vw);
+  max-width: min(520px, var(--myt-anchor-width, 86vw));
   padding: 8px 12px;
   box-sizing: border-box;
   border-radius: 12px;
@@ -764,15 +770,19 @@ html[data-dsh-maoying-active]:not([data-dsh-mnemon-active]):not([data-dsh-taskbo
 .myt-view, .myt-modalMask, .myt-settingsMask { zoom: var(--myt-zoom, 1); }
 .myt-settingsMask {
   position: fixed;
-  inset: 0;
+  top: var(--myt-mask-top, 0px);
+  right: var(--myt-mask-right, 0px);
+  bottom: var(--myt-mask-bottom, 0px);
+  left: var(--myt-mask-left, 0px);
   z-index: 80;
   display: flex;
   align-items: center;
   justify-content: center;
+  padding: 24px;
   background: color-mix(in srgb, var(--dsw-alias-bg-base, #000) 55%, transparent);
 }
 .myt-settings {
-  width: min(400px, 92vw);
+  width: min(400px, 100%);
   background: var(--dsw-alias-bg-layer-2);
   border: 1px solid var(--dsw-alias-border-l1);
   border-radius: 14px;
