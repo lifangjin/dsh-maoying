@@ -172,7 +172,7 @@ persona prefix 内容骨架（agent.cordis.yml 内联，中文书写）：
 - ✅ **技能包（黄金三章/爽点节奏/审校清单/伏笔管理）**——已做：skills/ 四目录随包分发，安装器复制到 `<home>/skills/maoying-*`（逐字节比较幂等 + .installed-version 标记，见 index.mjs installSkills）。
 - ✅ **导出（MD/TXT/EPUB）**——已做：`maoying export [dir] --format md|txt|epub [--out <目录>]`；EPUB 由 lib/epub.mjs 零依赖打包（手写 stored zip + CRC32 表格法，EPUB 3 最小合法结构）。
 - ✅ **0.2.1-rc.2+ AgentPreset 形态适配**——已做：presets/maoying/agent.cordis.v2.yml（主编 + 5 角色 preset 的 v2 组合源）+ index.mjs composeManagedRows 按宿主版本双形态切换（v1 内联 / v2 AgentPreset，宿主升降级重启即整块换形状；防漂移由 test/composition.test.mjs 逐字节断言，见 README「兼容面」）。
-- ✅ **Web 创作台面板**——已做：/api/maoying/* 十五条路由 + 左侧栏入口 + 会话中栏全页面板，九视图（概览/章节/角色/伏笔看板/关系图/时间线/设定/索引板/小说设置）；设计与契约见 docs/creator-panel.md。
+- ✅ **Web 创作台面板**——已做：/api/maoying/* 十五条路由 + 左侧栏入口 + 会话中栏全页面板，八视图（概览（含书稿元信息编辑）/章节/角色/伏笔看板/关系图/时间线/设定/索引板）；设计与契约见 docs/creator-panel.md。
 
 ## 9. 五期：共创模式（作者亲笔稿）
 

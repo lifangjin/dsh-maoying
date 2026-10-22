@@ -108,9 +108,9 @@ webServer.register({ kind: 'prefix', path: '/api/maoying', handler: async (req, 
 - 会话中栏全页 overlay：`html[data-dsh-maoying-active]` 驱动，`dsh-panel-activate` 事件与 mnemon/taskboard/ssh 等全页面板互斥，点侧栏会话行自动关闭；
 - 顶部工作区选择器（workspaces 路由取数，hasNovel 的排前；无 novel 工作区显示引导卡：一句 `maoying init` 提示 + 复制按钮）。面板懒挂载、关闭不卸载，故每次打开都借 `dsh-panel-activate` 广播重拉一次 workspaces——外部新建/删除的工作区重开即见。
 
-九个 tab（顺序即默认排布，第 9 个为后续迭代新增）：
+八个 tab（顺序即默认排布）：
 
-1. **概览**：project 卡（书名大字 + 类型/篇幅/语言 pills + 阶段徽章 + 简介）；统计卡（总字数/章节数/状态分布条）；最近更新（chapters 按 mtime 前 5）；warnings 黄条；静态体检黄条（check 路由问题清单，见 §4.1「人工改动保护 + 静态体检黄条」（0.1.14）条目）。
+1. **概览**：project 卡（书名大字 + 类型/篇幅/语言 pills + 阶段徽章 + 简介，卡右上「编辑」按钮展开书稿元信息表单——原「小说设置」tab 并入，见 §4.1「小说设置并入概览」条目）；统计卡（总字数/章节数/状态分布条）；最近更新（chapters 按 mtime 前 5）；warnings 黄条；静态体检黄条（check 路由问题清单，见 §4.1「人工改动保护 + 静态体检黄条」（0.1.14）条目）。
 2. **章节**：表格（卷-章/标题/状态徽章/字数/梗概），状态筛选 pills；表格上方「按单写作」区块——有章纲且 status=pending 的章按序列出（章纲节选 + 状态徽章），未建章的孤儿章纲照列（「未建章」徽章 + 「建章」一键：POST chapter-create 落 pending 空章并重拉快照；行点击开章纲全文弹层，0.1.15 起），共创模式的主工作清单；行点击开整页阅读视图（0.1.12 起替代原右侧抽屉——fixed 侧弹层会被 DSH 侧边栏遮挡）：返回按钮 + GET chapter 正文（只读，等宽滚动）+ 章纲对照栏（左右分栏或折叠段）+ 复制文件路径按钮 + 五维字段卡 + 状态流转按钮（当前态 → 下一态一键，pending→writing→review→accepted）。
 3. **角色**：卡墙（姓名/role 徽章四色/年龄性别/性格一句/动机一行），点击看全卡（含 arc/markers/background）。
 4. **伏笔**：四列看板（埋设/推进/已回收/弃用），卡片含 priority 色点（high 红/normal 灰/low 淡）、`source: backfill` 的「回填」小徽章（账本回填来的条目，区别于写前规划）、埋设章→预期回收章、notes 全文直显（0.1.10 去掉两行截断）；卡片按钮：推进到下一状态（planted→progressing→resolved；abandoned 只能从看板拖不动、按钮给「弃用」）。列头计数。
@@ -121,7 +121,7 @@ webServer.register({ kind: 'prefix', path: '/api/maoying', handler: async (req, 
 
 状态徽章色（全局统一）：pending 灰 / writing 蓝 / review 橙 / accepted 绿；phase 七态沿用七色 pill。文案全中文、禁 emoji 图标（用 ui-primitives 图标或纯 CSS）。
 
-## 4.1 后续迭代记录（0.1.10 – 0.1.15）
+## 4.1 后续迭代记录（0.1.10 起）
 
 - **MaskPortal**：抽屉/弹层统一 portal 到 `document.body`——面板容器挂在宿主会话中栏，中栏 transform/overflow 会把 `position: fixed` 劫持成相对自身并连同裁剪（桌面端「点了没反应」实测病灶）；无 createPortal 的老宿主退回原地渲染。
 - **顶栏版本区**：当前版本号常驻；`update-check` 路由（模仿 dsh-paoding：npm registry → npmmirror → GitHub 三级源，1h 缓存 + 7 天 stale-if-error，全败静默）发现新版时亮「有新版 ↗」徽章。
@@ -134,6 +134,7 @@ webServer.register({ kind: 'prefix', path: '/api/maoying', handler: async (req, 
 - **人工改动保护 + 静态体检黄条**（0.1.14）：快照顶层新增 `project_hash`（project.yml 原文 sha256，读不到为 null）——小说设置保存回传 `base_hash`，表单载入后 project.yml 被作者手改或 agent（如 mutatePhase 推进 phase）动过时 `project-save` 409 拒写并报「外部修改冲突」，客户端重拉快照把表单放回磁盘真值，不再静默覆盖同名键丢人工改动；概览新增「静态体检」黄条（GET `check`，与 CLI check 同源的 checkProject，透出快照归一掩盖的越枚举等问题，含 error 级时整条转错误色）。路由 11 → 12 条；I18N zh/en 各 209 → 211 条（check.title / check.fullHint）。
 - **面板内一键升级**（0.1.14）：`POST self-update`（lib/self-update.mjs，依赖全部可注入）——顶栏新版徽章旁加「一键升级」按钮，安装形态（`<dshHome>/profiles/<profile>/node_modules/dsh-maoying` 真实目录，symlink/dev 检出一票否决）与 pnpm 可执行性（PATH → homebrew/pnpm 官方安装位候选）双闸通过后跑 `pnpm --dir <profileDir> add dsh-maoying@latest`（180s 超时、无 shell、模块级 in-flight 去重），成功后失效版本检测缓存并提示「已安装 {to}，重启 DeepSeek 后生效」——**装完只换磁盘包，重启才生效，UI 文案照实说**；安装中按钮禁用（前端该请求超时放宽到 200s），「已安装，待重启」后徽章收起。路由 12 → 13 条；I18N zh/en 各 211 → 219 条（header.upgrade* / toast.selfUpdate.*）。
 - **按单写作兼容孤儿章纲**（0.1.15）：章纲先于正文时面板不再零入口——「按单写作」区块在联交（有章纲且 status=pending 的章）之外照列未建章的孤儿章纲（按章纲序保序混排）：「未建章」徽章 + 章纲节选 + 字数 + 两个动作（行点击开章纲全文弹层：MaskPortal + MdView 渲染 GET `outline` 的 body、words 一并显示；「建章」按钮 POST `chapter-create` 在 chapters/ 落 status=pending 空章——frontmatter 按 chapters/vXX-cXXX.md 模板、title 取章纲首条标题行去「章纲」后缀，成功 toast 后重拉快照，新章进表格、走既有 pending 流转，孤儿行按新快照自然消失）；chapters/ 为空而 outlines/ 非空时空态改提示「下方按单写作已列出未建章章纲」。路由 13 → 15 条（outline GET / chapter-create POST）；I18N zh/en 各 219 → 230 条（chapters.outlineRowTip / noChapter / createBtn / creating / createTip / emptyWithOutlines、toast.chapterCreated、outline.modalAria / closeAria / loading / loadFailed）。
+- **小说设置并入概览**：原第 9 个「小说设置」tab 撤销（八个 tab），改为概览书稿卡右上「编辑」按钮——点击后 hero 卡原位切换为书稿元信息表单（ProjectMetaForm，8 平键 + 取消/保存），保存链路不变（`POST project-save` 携 `base_hash` 409 人工改动保护，成功重拉快照并退出编辑态，取消直接退出不落盘）。路由不变；I18N zh/en 各 230 → 232 条（tabs.settings 移除，overview.edit / overview.editTip / novel.cancel 新增）。
 
 ## 5. 验收基线
 
