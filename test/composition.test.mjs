@@ -285,3 +285,21 @@ test('降级（无 yaml 包）：v1/v2 角色 persona 原始文本抽取逐字�
     assert.equal(v1Personas[i], v2Prefixes[i + 1], `[${ROLES[i]}] 降级比对：v1 persona 与 v2 prefix 原始文本不一致——v2 必须逐字同步 v1`)
   }
 })
+
+// ── 写作风格基准（novel/style.md）：模板在库 + 四角色加载纪律双源防漂移 ──────
+
+test('novel/style.md 模板在库且主编/outline/write/review 四段 persona（双源）都加载 style.md', (t) => {
+  const styleText = readFileSync(path.join(PLUGIN_ROOT, 'templates/novel/style.md'), 'utf8')
+  assert.ok(styleText.includes('写作风格基准'), 'style.md 应含「写作风格基准」字样')
+  if (!yaml) return t.skip('本机没有可用的 yaml 包（/tmp/yamlcheck）——persona 结构级断言跳过')
+  const v1Chief = v1Rows.find((r) => r.id === 'persona').config.prefix
+  const v2Chief = v2Preset('maoying').config.plugins.find((r) => r.id === 'persona').config.prefix
+  assert.ok(v1Chief.includes('style.md'), 'v1 主编 persona 应含 style.md（开工纪律防漂移）')
+  assert.ok(v2Chief.includes('style.md'), 'v2 主编 persona 应含 style.md（开工纪律防漂移）')
+  for (const role of ['outline', 'write', 'review']) {
+    const v1Persona = v1DelegationRows()[role].config.persona
+    const v2Persona = v2Preset(`maoying-${role}`).config.plugins.find((r) => r.id === 'persona').config.prefix
+    assert.ok(v1Persona.includes('style.md'), `[${role}] v1 persona 应含 style.md`)
+    assert.ok(v2Persona.includes('style.md'), `[${role}] v2 persona 应含 style.md`)
+  }
+})

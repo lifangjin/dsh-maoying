@@ -35,6 +35,10 @@ description: 一句话简介
 
 `mode` 三值：`ai-draft`（默认）AI 代笔，走 Writing 六步法；`co-write` 逐章指派谁写，章节 frontmatter 可记 `writer: author | ai`；`author-draft` 全书作者亲笔，主编只备料、审稿、记账，`chapters/` 正文唯作者可改。缺省（含旧项目无此键）按 `ai-draft`。
 
+## style.md
+
+写作风格基准：人称视角、语言基调、节奏、对话、情绪与爽点、禁忌的成文基线，写手/大纲师/审校一律遵守。纯 markdown、无 frontmatter，作者随时手改、改完即生效；新书冷启动时由主编与用户对齐后落盘，旧项目缺失时按通用网文基线执行。
+
 ## volumes.yml
 
 分卷规划，顶层数组，每卷一条。`id` 与章节文件名前缀一致；由大纲师维护。

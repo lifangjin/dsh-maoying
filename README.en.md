@@ -99,7 +99,7 @@ The plugin ships 4 web-novel methodology skills. At startup the installer drops 
 |---|---|
 | maoying-golden-opening | Golden three chapters: role split of the first three chapters (world hook → motivation → conflict detonation), the "something happens in the first 300 words" rule, information-release discipline and a self-check list |
 | maoying-beat-pacing | Payoff pacing: a payoff-type library, suppression-release ratios, chapter/arc/book pacing curves and chapter-end hook selection |
-| maoying-review-checklist | Review checklist: six layers (language / pacing / characterization / logic / foreshadowing / spoilers) with P0/P1/P2 severity |
+| maoying-review-checklist | Review checklist: seven layers (language / pacing / characterization / logic / foreshadowing / spoilers / style) with P0/P1/P2 severity |
 | maoying-foreshadow-discipline | Foreshadow management: register on planting, pacing & scheduling, the "surprising yet reasonable" payoff bar, and ledger cleanup thresholds |
 
 The installer only touches `maoying-*` prefixed directories; your own skills under `~/.dsh/skills/` are untouched, byte for byte. After uninstalling the plugin, remove the skill directories manually (all four together):
@@ -111,7 +111,7 @@ rm -rf "${DSH_HOME:-$HOME/.dsh}/skills/"maoying-*
 
 ## The novel/ Data Spec
 
-The `novel/` directory is the plugin's entire database: project.yml (metadata + seven-phase state), volumes.yml, chapters/ (frontmatter five narrative dimensions + prose), characters/ (character cards), world/, science/ (three-color settings), relations.yml, foreshadows.yml (the state machine), timeline.yml, memories.yml (with appearance records and the promise ledger), clue-board.yml, research/, exports/. Full formats, examples and design rationale:
+The `novel/` directory is the plugin's entire database: project.yml (metadata + seven-phase state), style.md (the writing style baseline), volumes.yml, chapters/ (frontmatter five narrative dimensions + prose), characters/ (character cards), world/, science/ (three-color settings), relations.yml, foreshadows.yml (the state machine), timeline.yml, memories.yml (with appearance records and the promise ledger), clue-board.yml, research/, exports/. Full formats, examples and design rationale:
 
 - Quick reference: `novel/README.md` after project init (template source: [templates/novel/README.md](templates/novel/README.md))
 - Full spec: [docs/spec.md](docs/spec.md) (why not SQLite, five-dimension field definitions, foreshadow state-machine semantics, appearance-record conventions)

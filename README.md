@@ -99,7 +99,7 @@ author-draft 下的协作循环——你只管写，交稿即接管杂务：
 |---|---|
 | maoying-golden-opening | 黄金三章：前三章职能分工（世界钩子 → 动机确立 → 冲突引爆）、前 300 字出事原则、信息释放纪律与自检清单 |
 | maoying-beat-pacing | 爽点节奏：爽点类型库、压抑-释放配比、单章/中/大三级节奏曲线与章尾钩子选型 |
-| maoying-review-checklist | 审校清单：语言/节奏/人设/逻辑/伏笔/剧透六层逐项检查，按 P0/P1/P2 三档严重度输出 |
+| maoying-review-checklist | 审校清单：语言/节奏/人设/逻辑/伏笔/剧透/风格七层逐项检查，按 P0/P1/P2 三档严重度输出 |
 | maoying-foreshadow-discipline | 伏笔管理：埋设即登记、推进节奏排期、回收「意外 + 合理」标准与台账清理阈值 |
 
 安装器只认 `maoying-*` 前缀目录，`~/.dsh/skills/` 下你自己的技能一个字节不动。卸载插件后技能目录需手动清理（四目录一起删）：
@@ -111,7 +111,7 @@ rm -rf "${DSH_HOME:-$HOME/.dsh}/skills/"maoying-*
 
 ## novel/ 数据规范
 
-`novel/` 目录是整个插件的数据库：project.yml（元信息与七阶段 phase）、volumes.yml、chapters/（frontmatter 五维叙事字段 + 正文）、characters/（角色卡）、world/、science/（三色设定）、relations.yml、foreshadows.yml（伏笔状态机）、timeline.yml、memories.yml（含出场记录与承诺账）、clue-board.yml、research/、exports/。全部格式、示例与设计理由见：
+`novel/` 目录是整个插件的数据库：project.yml（元信息与七阶段 phase）、style.md（写作风格基准）、volumes.yml、chapters/（frontmatter 五维叙事字段 + 正文）、characters/（角色卡）、world/、science/（三色设定）、relations.yml、foreshadows.yml（伏笔状态机）、timeline.yml、memories.yml（含出场记录与承诺账）、clue-board.yml、research/、exports/。全部格式、示例与设计理由见：
 
 - 速查版：项目初始化后的 `novel/README.md`（模板源 [templates/novel/README.md](templates/novel/README.md)）
 - 完整版：[docs/spec.md](docs/spec.md)（为什么不用 SQLite、五维字段定义、伏笔状态机语义、出场记录约定）
