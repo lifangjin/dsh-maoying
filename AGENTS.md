@@ -12,8 +12,8 @@
 ## 测试基线与门禁
 
 - 基线命令：仓库根跑 `npm test`（即 `node --test test/*.test.mjs`，不带引号——由 shell 展开 glob；Node 18/20 的 `--test` 不认 glob 字面量，v21 起才支持）。改源码或改测试后必须全量 0 fail；pass/skip 数字以当次 `npm test` 输出为准，不写死在本文件里（skip 只允许 yaml 包条件跳过一类，出现其他 skip 必须查明原因）。
-- 冒烟：`npm run smoke`（scripts/smoke-client.mjs，校验 lib/client.js 的 factory 可解析、可求值、导出面完整）。CI（.github/workflows/ci.yml，Node 18/20/22 矩阵）两样都跑。
-- `/tmp/yamlcheck` staging 约定：本仓库零 npm 依赖，测试需要真 yaml 包时从 `/tmp/yamlcheck/node_modules/yaml` 借（与安装器运行时同款 yaml v2）。搭法一条命令：`npm install --no-save --prefix /tmp/yamlcheck yaml@2`。依赖它的用例：test/installer-shape.test.mjs（假 home 借包）、test/composition.test.mjs（双源 YAML 解析）、test/panel-core.test.mjs（生产默认真解析路径）。staging 缺席时这些用例一律优雅 skip（对照 test/composition.test.mjs 的 `t.skip` 写法），不算失败；CI 里有一个不阻断的 staging 搭建步骤，缺席不红。
+- 冒烟：`npm run smoke`（scripts/smoke-client.mjs，校验 lib/client.js 的 factory 可解析、可求值、导出面完整）。仓库无 CI（.github/workflows 已移除），`npm test` 与 `npm run smoke` 均为本地执行。
+- `/tmp/yamlcheck` staging 约定：本仓库零 npm 依赖，测试需要真 yaml 包时从 `/tmp/yamlcheck/node_modules/yaml` 借（与安装器运行时同款 yaml v2）。搭法一条命令：`npm install --no-save --prefix /tmp/yamlcheck yaml@2`。依赖它的用例：test/installer-shape.test.mjs（假 home 借包）、test/composition.test.mjs（双源 YAML 解析）、test/panel-core.test.mjs（生产默认真解析路径）。staging 缺席时这些用例一律优雅 skip（对照 test/composition.test.mjs 的 `t.skip` 写法），不算失败。
 
 ## 发布检查单（追加一条）
 
