@@ -996,16 +996,20 @@ export async function registerCreatorRoutes(ctx) {
         }
 
         if (route === 'self-update' && req.method === 'POST') {
-          // 面板内一键升级：形态/pnpm 检查 + `pnpm --dir <profileDir> add
-          // dsh-maoying@latest`（细节与安全边界见 lib/self-update.mjs）。可
-          // 预期的失败（dev-link / unsupported-layout / pnpm-missing / 超时 /
-          // pnpm 非零退出）统一 HTTP 200 + ok:false，kind 给客户端分流、
-          // message 经 sanitizeMessage 脱敏后透出；成功也带 restartRequired:
+          // 面板内一键升级：形态/profile 预检 + 版本预检后，在 profile 目录里
+          // 直跑 `pnpm add dsh-maoying@<精确版本>`（pnpm 按候选链解析，细节与
+          // 安全边界见 lib/self-update.mjs）。可预期的失败（dev-link /
+          // unsupported-layout / profile-missing / no-target / pnpm-missing /
+          // 超时 / 退出码非零 nonzero）统一 HTTP 200 + ok:false，kind 给客户端
+          // 分流、message 经 sanitizeMessage 脱敏后透出；成功带 restartRequired:
           // true——装完的只是磁盘上的新包，运行中的进程仍是旧代码，必须重启
-          // DeepSeek 才生效，客户端文案必须照实转述。
+          // DeepSeek 才生效，客户端文案必须照实转述。本地已不落后线上时短路
+          // kind: 'up-to-date'（不 spawn，未安装任何东西）。
           const r = await selfUpdate({ logger: ctx.logger })
-          if (r.ok) {
-            json(res, 200, { ok: true, from: r.from ?? null, to: r.to ?? null, restartRequired: true })
+          if (r.ok && r.kind === 'up-to-date') {
+            json(res, 200, { ok: true, kind: 'up-to-date', from: r.from ?? null })
+          } else if (r.ok) {
+            json(res, 200, { ok: true, kind: r.kind, from: r.from ?? null, to: r.to ?? null, restartRequired: true })
           } else {
             json(res, 200, { ok: false, kind: r.kind, error: sanitizeMessage(r.message ?? r.kind) })
           }
