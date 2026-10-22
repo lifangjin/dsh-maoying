@@ -10,8 +10,8 @@ Once installed, the main agent becomes the **editor-in-chief of your novel**: it
 
 - **Editor-in-chief + five helpers**: the main agent plans, connects, reviews and advances states; the outliner (outline), writer (write), reviewer (review), lore keeper (lore) and researcher (research) each carry their own tools. Trivial errands like finding a file or checking a foreshadow status, the chief handles itself with glob/grep.
 - **novel/ as a file database**: character cards, worldbuilding & science settings with three-color tags, relations graph, foreshadow ledger, timeline, narrative memory, clue board — all grep-friendly flat-key/top-level-array YAML, human-editable, git-versioned, no migrations, no ops.
-- **Seven-phase workflow**: idea → setting → outline → writing → review → consistency → export. The phase lives in the `phase` key of project.yml; the chief advances it at each milestone and reports to you.
-- **Writing six-step method**: continuity check → outline → draft → review → revision → finalization, looping per chapter; paired with the Collab four-step co-writing flow (setting co-creation → volume planning → golden three chapters → handoff loop) it takes a new book from zero to rolling updates.
+- **Seven-phase workflow**: idea → setting → outline → writing → review → consistency → export. The phase lives in the `phase` key of project.yml; the chief advances it at each milestone and reports to you, with completion gates (core settings saved; volume plan and the target chapter outline in place before writing) — unmet, it steps back a phase.
+- **Writing six-step method**: continuity check → outline → draft → review → revision → finalization, looping per chapter; paired with the Collab four-step co-writing flow (setting co-creation → volume planning → golden three chapters → handoff loop) it takes a new book from zero to rolling updates; the setting digest and the volume plan each get a user sign-off, and the golden three chapters wait until settings are locked.
 - **Foreshadowing state machine**: planted → progressing → resolved / abandoned, with planting and payoff chapter numbers, expected-payoff scheduling and priority tiers — a long serial never drops a thread; past 15 active foreshadowing entries the chief proactively suggests cleanup.
 - **Context on demand**: the chief reads index.yml for the big picture, then pulls only what the chapter at hand needs (previous chapter's ending ≈1500 chars + its outline + on-stage character cards + active foreshadow excerpts) — never the whole book.
 - **Narrow tool surface**: the chief sees only "role delegation + internal retrieval + coordination"; helpers carry their line's tools (reviewer read-only, researcher web+notes only) — less per-request tool overhead and context weight.
@@ -53,7 +53,7 @@ With the preset selected, just talk to the chief; it routes by the workflow itse
 
 > I want to write an Eastern fantasy where the protagonist's golden finger is hearing objects speak and appraising treasures to level up.
 
-The chief aligns genre and tone with you, delegates core character cards and worldbuilding to the lore keeper, volume planning to the outliner, then has the golden three chapters (world hook, protagonist motivation, core conflict) written and delivered.
+The chief aligns the setting with you item by item (genre, golden finger, tone, the protagonist's want/obstacle/leverage, the core opposition); the lore keeper saves core character cards and worldbuilding entries for your sign-off, the outliner's volume plan gets a second sign-off — only then are the golden three chapters (world hook, protagonist motivation, core conflict) written and delivered.
 
 **Per-chapter writing (Writing six-step method)**:
 

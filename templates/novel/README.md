@@ -20,7 +20,7 @@
 
 ## project.yml
 
-书稿元信息，平键。`phase` 是七阶段工作流的状态机指针，每完成一个里程碑由主编推进；`mode` 决定正文归谁写。
+书稿元信息，平键。`phase` 是七阶段工作流的状态机指针，每完成一个里程碑由主编推进（setting→outline 须核心角色卡与世界观核心条目落盘；outline→writing 须 volumes.yml 与目标章大纲在案）；`mode` 决定正文归谁写。
 
 ```yaml
 title: 未命名书稿      # 书名
