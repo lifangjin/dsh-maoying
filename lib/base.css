@@ -709,7 +709,8 @@ html[data-dsh-maoying-active]:not([data-dsh-mnemon-active]):not([data-dsh-taskbo
   box-shadow: 0 8px 28px color-mix(in srgb, #000 24%, transparent);
   pointer-events: auto;
 }
-.myt-toastText { min-width: 0; max-height: 120px; overflow-y: auto; overflow-wrap: anywhere; }
+/* pre-line：一键升级 toast 的全局 CLI 第二句以 \n 换行显示（client.js globalCliNote）。 */
+.myt-toastText { min-width: 0; max-height: 120px; overflow-y: auto; overflow-wrap: anywhere; white-space: pre-line; }
 .myt-toastOk { border-color: color-mix(in srgb, var(--dsw-alias-state-success-primary) 40%, transparent); }
 .myt-toastWarn { border-color: color-mix(in srgb, var(--dsw-alias-state-warn-primary) 40%, transparent); }
 .myt-toastErr { border-color: color-mix(in srgb, var(--dsw-alias-state-error-primary) 50%, transparent); }

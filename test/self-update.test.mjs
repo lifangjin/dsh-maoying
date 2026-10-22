@@ -9,12 +9,15 @@
  * → mirror 兜底 → 双败 no-target）、up-to-date 短路、候选链顺序与 ENOENT 换路
  * （pnpm-missing 出路文案）、cwd=profileDir、精确版本安装（无 @latest）、
  * profile-missing、超时 / 非零退出、成功流 from/to/restartRequired、win32
- * shell 分支、in-flight 去重，以及 index.mjs 路由接线（仓库检出形态下 200 +
- * ok:false 收敛，不真装、不发外网请求）。
+ * shell 分支、in-flight 去重，全局 CLI 顺带更新（方案 B：missing 零 spawn /
+ * 旧版跟更 npm i -g 契约 / same 跳过 / up-to-date 仍跟更 / npm 全落空与非零
+ * 退出不拖累整体 / profile 内 bin 不认作全局），以及 index.mjs 路由接线
+ * （仓库检出形态下 200 + ok:false 收敛，不真装、不发外网请求）。
  */
 
 import test from 'node:test'
 import assert from 'node:assert/strict'
+import os from 'node:os'
 import path from 'node:path'
 
 import { selfUpdate, resetSelfUpdateInflight, defaultSpawn } from '../lib/self-update.mjs'
@@ -102,6 +105,46 @@ function layoutDeps(overrides = {}) {
   }
 }
 
+// ── 全局 CLI 假件（方案 B 用例共用，全注入不落盘）───────────────────────────
+// 假全局安装位：PATH 里的 bin（existsSync 预筛命中）realpath 到全局 node_modules
+// 包根下的 bin/maoying.mjs，readImpl 按包根目录给 package.json。
+const GLOBAL_BIN = '/fake-global/bin/maoying'
+const GLOBAL_ROOT = '/fake-global/lib/node_modules/dsh-maoying'
+
+/**
+ * 给 layoutDeps 产物叠一层全局 CLI 假件：
+ *   - globalVersion：包根 package.json 的 version（与 npm manifest 桩的 target
+ *     1.2.3 比较定「旧 / 同」）。
+ *   - binRealpath：bin 的 realpath（缺省 GLOBAL_ROOT/bin/maoying.mjs）。
+ *   - extraBins：追加的 bin 候选 [binPath, realCliPath]（bin 落 profile 目录内
+ *     等排除用例）。
+ *   - extraPathDirs：追加到 PATH 最前的目录（候选按序先撞上它们）。
+ *   - extraPkgs：追加的包根 → package.json manifest（profile 内包根假件）。
+ */
+function withGlobalCli(deps, { globalVersion = '0.9.0', binRealpath = path.join(GLOBAL_ROOT, 'bin', 'maoying.mjs'), extraBins = [], extraPathDirs = [], extraPkgs = {} } = {}) {
+  const pkgs = { [GLOBAL_ROOT]: { name: 'dsh-maoying', version: globalVersion }, ...extraPkgs }
+  const baseExists = deps.existsImpl
+  const baseRealpath = deps.realpathImpl
+  const bins = [[GLOBAL_BIN, binRealpath], ...extraBins]
+  return {
+    ...deps,
+    env: { ...deps.env, PATH: [...extraPathDirs, path.dirname(GLOBAL_BIN), deps.env.PATH].join(':') },
+    existsImpl: (p) => bins.some(([b]) => b === p) || baseExists(p),
+    realpathImpl: (p) => {
+      const hit = bins.find(([b]) => b === p)
+      return hit ? hit[1] : baseRealpath(p)
+    },
+    readImpl: (p) => {
+      for (const [dir, manifest] of Object.entries(pkgs)) {
+        if (p === path.join(dir, 'package.json')) return JSON.stringify(manifest)
+      }
+      const err = new Error('ENOENT: no fake package.json')
+      err.code = 'ENOENT'
+      throw err
+    },
+  }
+}
+
 // ── 安装形态闸 ──────────────────────────────────────────────────────────────
 
 test('dev-link 拒绝：真路径 ≠ 常规路径（symlink 到 dev repo）绝不 spawn、不发外网请求', async () => {
@@ -119,6 +162,7 @@ test('dev-link 拒绝：真路径 ≠ 常规路径（symlink 到 dev repo）绝�
   assert.match(r.message, /git pull/, 'dev-link message 给出手动出路（git pull）')
   assert.equal(spawn.calls.length, 0, 'dev-link 一票否决，绝不执行安装')
   assert.equal(fetch.calls.length, 0, '形态闸在版本预检之前，不发外网请求')
+  assert.equal(r.globalCli, undefined, 'dev-link 整单拒绝：全局 CLI 阶段完全不跑')
 })
 
 test('unsupported-layout：真路径没有 profiles/node_modules 祖先结构', async () => {
@@ -303,6 +347,112 @@ test('并发去重：同一时刻两次调用只 spawn 一次、共享同一结�
   assert.equal(b.ok, true)
   assert.equal(a, b, '并发调用共享同一 in-flight promise')
   assert.equal(spawn.calls.length, 1, 'pnpm add 绝不并发跑两份')
+})
+
+// ── 全局 CLI 顺带更新（方案 B）───────────────────────────────────────────────
+
+test('全局 CLI 未装：globalCli skipped:missing，profile 安装之外零额外 spawn', async () => {
+  resetSelfUpdateInflight()
+  const deps = layoutDeps() // PATH=/usr/bin:/bin，exists 假件无任何 maoying bin
+  const spawn = deps.spawnImpl
+  const r = await selfUpdate(deps)
+  assert.equal(r.ok, true)
+  assert.equal(r.kind, 'installed')
+  assert.deepEqual(r.globalCli, { ok: true, skipped: 'missing' }, '没装全局 CLI 就跳过，不带 error')
+  assert.equal(spawn.calls.length, 3, '只有 profile 的 pnpm 候选链三次，全局阶段不 spawn')
+})
+
+test('全局 CLI 已装且旧：npm spawn 收到 [i, -g, dsh-maoying@<target>]，globalCli ok:true from/to', async () => {
+  resetSelfUpdateInflight()
+  const spawn = spawnScripter([
+    ENOENT_RESULT, ENOENT_RESULT, { code: 0, output: 'added 1 package' }, // profile 三路
+    { code: 0, output: 'changed 1 package' }, // 全局：裸 npm 直接命中
+  ])
+  const r = await selfUpdate(withGlobalCli(layoutDeps({ spawnImpl: spawn })))
+  assert.equal(r.ok, true)
+  assert.equal(r.kind, 'installed')
+  assert.deepEqual(r.globalCli, { ok: true, from: '0.9.0', to: '1.2.3' })
+  const g = spawn.calls[3]
+  assert.equal(g.command, 'npm', '全局阶段第一候选是裸 npm')
+  assert.deepEqual(g.args, ['i', '-g', 'dsh-maoying@1.2.3'], '装精确目标版本')
+  assert.equal(g.opts.cwd, os.tmpdir(), 'npm 全局装与 cwd 无关，跑在系统临时目录')
+  assert.equal(g.opts.shell, false, 'darwin 恒 shell:false')
+  assert.equal(g.timeoutMs, 120000, '全局阶段独立 120s 超时（profile 仍 180s）')
+  assert.equal(g.timeoutLabel, 'npm i -g')
+  assert.equal(spawn.calls[2].timeoutMs, 180000, 'profile 候选链仍是 180s')
+})
+
+test('全局 CLI 已同版：globalCli skipped:same（带 version），全局阶段不 spawn', async () => {
+  resetSelfUpdateInflight()
+  const spawn = spawnScripter([ENOENT_RESULT, ENOENT_RESULT, { code: 0, output: 'added 1 package' }])
+  const r = await selfUpdate(withGlobalCli(layoutDeps({ spawnImpl: spawn }), { globalVersion: '1.2.3' }))
+  assert.equal(r.ok, true)
+  assert.deepEqual(r.globalCli, { ok: true, skipped: 'same', version: '1.2.3' })
+  assert.equal(spawn.calls.length, 3, '两份已同版，npm 不跑')
+})
+
+test('up-to-date 且全局旧：profile 短路仍跟进全局更新，kind:up-to-date 携 globalCli', async () => {
+  resetSelfUpdateInflight()
+  const spawn = spawnScripter([{ code: 0, output: 'changed 1 package' }])
+  const r = await selfUpdate(withGlobalCli(layoutDeps({
+    fetchImpl: npmStub({ registry: { ok: true, version: '0.0.1' } }), // 恒低于本地 → up-to-date 短路
+    spawnImpl: spawn,
+  }), { globalVersion: '0.0.0' }))
+  assert.equal(r.ok, true)
+  assert.equal(r.kind, 'up-to-date')
+  assert.equal(r.from, CURRENT)
+  assert.deepEqual(r.globalCli, { ok: true, from: '0.0.0', to: '0.0.1' }, '方案 B：两份收敛到同一精确版本')
+  assert.equal(spawn.calls.length, 1, 'profile 不装（短路），只有全局一次 spawn')
+  assert.equal(spawn.calls[0].command, 'npm')
+  assert.deepEqual(spawn.calls[0].args, ['i', '-g', 'dsh-maoying@0.0.1'])
+  assert.equal(spawn.calls[0].opts.cwd, os.tmpdir())
+})
+
+test('npm 候选全 ENOENT：globalCli.ok:false 带手动出路，整体仍 ok:true、restartRequired 仍在', async () => {
+  resetSelfUpdateInflight()
+  const spawn = spawnScripter([
+    ENOENT_RESULT, ENOENT_RESULT, { code: 0, output: 'added 1 package' }, // profile 成功
+    ENOENT_RESULT, // 全局：唯一候选裸 npm ENOENT（绝对 npm 路径都不在盘上）
+  ])
+  const r = await selfUpdate(withGlobalCli(layoutDeps({ spawnImpl: spawn })))
+  assert.equal(r.ok, true, 'profile 已装好，全局失败不拖累整体')
+  assert.equal(r.kind, 'installed')
+  assert.equal(r.restartRequired, true)
+  assert.equal(r.globalCli.ok, false)
+  assert.match(r.globalCli.error, /未找到可用的 npm/)
+  assert.match(r.globalCli.error, new RegExp(`npm i -g dsh-maoying@1\\.2\\.3`), 'error 带手动出路')
+})
+
+test('npm 非零退出：globalCli.ok:false 带 exit 码 + 输出尾部 + 手动出路', async () => {
+  resetSelfUpdateInflight()
+  const spawn = spawnScripter([
+    ENOENT_RESULT, ENOENT_RESULT, { code: 0, output: 'added 1 package' },
+    { code: 1, output: 'npm ERR! EACCES permission denied' },
+  ])
+  const r = await selfUpdate(withGlobalCli(layoutDeps({ spawnImpl: spawn })))
+  assert.equal(r.ok, true, '整体仍成功')
+  assert.equal(r.globalCli.ok, false)
+  assert.match(r.globalCli.error, /exit 1/)
+  assert.match(r.globalCli.error, /npm i -g dsh-maoying@1\.2\.3/)
+  assert.match(r.globalCli.output, /EACCES/, '子进程输出尾部随 globalCli.output 透出便于排障')
+})
+
+test('bin 候选落在 profile 目录内：不认作全局，跳过该候选继续找后面的真全局', async () => {
+  resetSelfUpdateInflight()
+  const profileBin = path.join(PROFILE_DIR, 'node_modules', '.bin', 'maoying')
+  const spawn = spawnScripter([
+    ENOENT_RESULT, ENOENT_RESULT, { code: 0, output: 'added 1 package' },
+    { code: 0, output: 'changed 1 package' },
+  ])
+  const r = await selfUpdate(withGlobalCli(layoutDeps({ spawnImpl: spawn }), {
+    extraBins: [[profileBin, path.join(LAYOUT_DIR, 'bin', 'maoying.mjs')]], // realpath 上溯 = profile 自己的包
+    extraPathDirs: [path.dirname(profileBin)], // 排在真全局 bin 之前，必先撞上
+    extraPkgs: { [LAYOUT_DIR]: { name: 'dsh-maoying', version: CURRENT } }, // name 对、路径在 profile 内
+  }))
+  assert.equal(r.ok, true)
+  assert.deepEqual(r.globalCli, { ok: true, from: '0.9.0', to: '1.2.3' }, 'profile 内 bin 被排除，认的是 PATH 里更后面的真全局')
+  const g = spawn.calls[3]
+  assert.deepEqual(g.args, ['i', '-g', 'dsh-maoying@1.2.3'], '确实按旧版全局（0.9.0）发起更新，而非 profile 内那份')
 })
 
 // ── defaultSpawn（真实短命子进程，直测缺省执行器契约）────────────────────────

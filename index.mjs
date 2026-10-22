@@ -1004,12 +1004,17 @@ export async function registerCreatorRoutes(ctx) {
           // 分流、message 经 sanitizeMessage 脱敏后透出；成功带 restartRequired:
           // true——装完的只是磁盘上的新包，运行中的进程仍是旧代码，必须重启
           // DeepSeek 才生效，客户端文案必须照实转述。本地已不落后线上时短路
-          // kind: 'up-to-date'（不 spawn，未安装任何东西）。
+          // kind: 'up-to-date'（不装 profile）。两个成功路径都顺带全局 CLI：
+          // globalCli 原样透传（json 序列化不截字段；形状与失败不拖累整体的
+          // 语义见 lib/self-update.mjs 文件头注「全局 CLI 顺带更新」节）。
           const r = await selfUpdate({ logger: ctx.logger })
           if (r.ok && r.kind === 'up-to-date') {
-            json(res, 200, { ok: true, kind: 'up-to-date', from: r.from ?? null })
+            json(res, 200, { ok: true, kind: 'up-to-date', from: r.from ?? null, globalCli: r.globalCli ?? null })
           } else if (r.ok) {
-            json(res, 200, { ok: true, kind: r.kind, from: r.from ?? null, to: r.to ?? null, restartRequired: true })
+            json(res, 200, {
+              ok: true, kind: r.kind, from: r.from ?? null, to: r.to ?? null,
+              restartRequired: true, globalCli: r.globalCli ?? null,
+            })
           } else {
             json(res, 200, { ok: false, kind: r.kind, error: sanitizeMessage(r.message ?? r.kind) })
           }
