@@ -192,6 +192,9 @@ test('parseStateSnapshot（回退解析）：§3 契约字段逐一就位', () =
   assert.equal(snap.science[0].label, 'extrapolation')
   assert.deepEqual(snap.science[0].references, ['known:灵气密度与纬度'])
   assert.equal(snap.research[0].topic, '北境封冻期风物考')
+  assert.deepEqual(snap.research, [{ file: 'bei-jing-feng-su.md', topic: '北境封冻期风物考', sources: ['https://example.com/fengsu'], description: '封冻八个月的镇子靠凿冰取水。' }])
+  // volumes：分卷规划原样出快照（概览分卷卡取数）
+  assert.deepEqual(snap.volumes, [{ id: 'v01', title: '第一卷 北境风雪', summary: '雪灾揭幕，玉佩现世。', chapters: '001-002' }])
 
   // outlines（五期）：按 chapterSortKey（卷、章号）升序；孤儿章纲（正文未写）
   // 照列；words 为 CJK 计数；excerpt 为折叠空白的节选原料
@@ -269,6 +272,10 @@ test('parseStateSnapshot：yaml 包可用时真解析（条件执行，本机借
   assert.deepEqual(lin.markers, ['紧张时摩挲袖口', '说话前先抿嘴'])
   assert.equal(lin.age, 19)
   assert.equal(snap.totals.words, 31)
+  // 真解析路径同验新增键：volumes 与 research 正文（与回退解析口径一致）
+  assert.deepEqual(snap.volumes, [{ id: 'v01', title: '第一卷 北境风雪', summary: '雪灾揭幕，玉佩现世。', chapters: '001-002' }])
+  assert.equal(snap.research[0].description, '封冻八个月的镇子靠凿冰取水。')
+  assert.deepEqual(snap.research[0].sources, ['https://example.com/fengsu'])
 })
 
 // ── 写操作三件套 ────────────────────────────────────────────────────────────

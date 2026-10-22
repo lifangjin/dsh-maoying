@@ -80,6 +80,7 @@ webServer.register({ kind: 'prefix', path: '/api/maoying', handler: async (req, 
   "chapters": [{ "file","volume","num","title","status","words","summary",
                  "cognitive_frame","emotional_anchor","world_texture",
                  "suspense","interpersonal_tension" }],     // 按 volume,num 升序；words 为 CJK 计数
+  "volumes": [{ "id","title","summary","chapters" }],        // volumes.yml 分卷规划原样；chapters 为 001-020 计划范围串，非章节清单
   "characters": [{ "file","name","age","gender","role","appearance","personality",
                    "background","motivation","arc","markers" }], // markers 数组，缺省 []
   "relations": [{ "a","b","type","description","intensity","started","ended" }], // a/b：relations.yml 里是角色 slug，出快照时对得上角色卡的端点归一成 name（关系图按 name 找节点），对不上原样保留
@@ -90,7 +91,7 @@ webServer.register({ kind: 'prefix', path: '/api/maoying', handler: async (req, 
   "clues": [{ "kind","content","related_chapter","resolved" }],
   "world": [{ "file","category","tags","name","description" }],
   "science": [{ "file","label","name","description","references" }],
-  "research": [{ "file","topic" }],
+  "research": [{ "file","topic","sources","description" }],  // sources 为 frontmatter sources 的 URL 数组，description 为笔记正文
   "outlines": [{ "file","chapter","words","excerpt" }],  // outlines/ 章纲清单，chapter 为对应章节文件名，excerpt 为章纲节选（前 120 字，面板按单写作区块用），无章纲的章不列
   "totals": { "chapters": 12, "words": 38412,
               "byStatus": { "pending": 3, "writing": 2, "review": 1, "accepted": 6 } },
@@ -136,6 +137,7 @@ webServer.register({ kind: 'prefix', path: '/api/maoying', handler: async (req, 
 - **按单写作兼容孤儿章纲**（0.1.15）：章纲先于正文时面板不再零入口——「按单写作」区块在联交（有章纲且 status=pending 的章）之外照列未建章的孤儿章纲（按章纲序保序混排）：「未建章」徽章 + 章纲节选 + 字数 + 两个动作（行点击开章纲全文弹层：MaskPortal + MdView 渲染 GET `outline` 的 body、words 一并显示；「建章」按钮 POST `chapter-create` 在 chapters/ 落 status=pending 空章——frontmatter 按 chapters/vXX-cXXX.md 模板、title 取章纲首条标题行去「章纲」后缀，成功 toast 后重拉快照，新章进表格、走既有 pending 流转，孤儿行按新快照自然消失）；chapters/ 为空而 outlines/ 非空时空态改提示「下方按单写作已列出未建章章纲」。路由 13 → 15 条（outline GET / chapter-create POST）；I18N zh/en 各 219 → 230 条（chapters.outlineRowTip / noChapter / createBtn / creating / createTip / emptyWithOutlines、toast.chapterCreated、outline.modalAria / closeAria / loading / loadFailed）。
 - **小说设置并入概览**（0.1.15）：原第 9 个「小说设置」tab 撤销（八个 tab），改为概览书稿卡右上「编辑」按钮——点击后 hero 卡原位切换为书稿元信息表单（ProjectMetaForm，8 平键 + 取消/保存），保存链路不变（`POST project-save` 携 `base_hash` 409 人工改动保护，成功重拉快照并退出编辑态，取消直接退出不落盘）。路由不变；I18N zh/en 各 230 → 232 条（tabs.settings 移除，overview.edit / overview.editTip / novel.cancel 新增）。
 - **role 徽章本地化**（0.1.15）：角色卡墙与全卡弹层的 role 徽章不再直出角色卡 frontmatter 原文——契约四态（`protagonist|antagonist|supporting|minor`）按界面语言出标签（主角/反派/配角/龙套；英文面板 Protagonist/Antagonist/Supporting/Minor），role 是自由文本、契约外取值原样展示不翻译；tone 归色逻辑（roleTone 关键词匹配）不变。I18N zh/en 各 232 → 236 条（role.protagonist / antagonist / supporting / minor）。
+- **分卷规划卡 + 考据笔记正文**（未发版）：快照顶层新增 `volumes`（volumes.yml 原样：id/title/summary/chapters 计划范围串）——概览新增「分卷规划」卡（有卷才显，卷头 id · 卷名 + 计划范围 tag + 卷定位一句），分卷拍板件在面板有复核位（配合 CLI check 的 phase 阶段就绪判据）；research 快照从只取 topic 扩为 sources + description，设定 tab「资料检索」从标签行改为逐条渲染：topic 标题 + 笔记正文（MdView）+ sources 参考（悬停显全文 URL）。路由不变；I18N zh/en 各 +1 条（overview.volumes）。
 
 ## 5. 验收基线
 
