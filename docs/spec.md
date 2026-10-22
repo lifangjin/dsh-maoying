@@ -27,7 +27,7 @@
 字段与最小示例见速查版（`templates/novel/README.md`），此处只补约定：
 
 ### project.yml
-`phase` 七态 `idea|setting|outline|writing|review|consistency|export` 只能由主编推进（帮手不得越权改），且必须顺序推进不可跳越；推进时主编须向用户简报。推进有完成判据：setting → outline 须核心角色卡（主角、核心反派）与世界观核心条目（金手指规则、对抗格局）已落盘；outline → writing 须 volumes.yml 在案且目标章大纲已出；判据不满足回上一阶段补齐。冷启动（Collab 四步）在设定落盘与分卷规划两处各设一个用户拍板点——主编简报列决策点，等用户实质确认才进下一步。`language` 影响写手与审校的语言纪律（如 `zh` 不允许成段外文）。`mode` 三值决定正文归谁写：`ai-draft`（缺省，AI 代笔，主编走 Writing 六步法）/ `co-write`（逐章指派谁写，主编动笔前先问清本章归谁）/ `author-draft`（全书作者亲笔，主编只备料、审稿、记账，永不代写）。文件里没有 `mode` 键的旧项目一律按 `ai-draft` 处理。
+`phase` 七态 `idea|setting|outline|writing|review|consistency|export` 只能由主编推进（帮手不得越权改），且必须顺序推进不可跳越；推进时主编须向用户简报。推进有完成判据：setting → outline 须核心角色卡（主角、核心反派）与世界观核心条目（金手指规则、对抗格局）已落盘，且 characters/ 有两张及以上角色卡时 relations.yml 不为空（关系网须登记）；outline → writing 须 volumes.yml 在案且目标章大纲已出；判据不满足回上一阶段补齐。冷启动（Collab 四步）在设定落盘与分卷规划两处各设一个用户拍板点——主编简报列决策点，等用户实质确认才进下一步。`language` 影响写手与审校的语言纪律（如 `zh` 不允许成段外文）。`mode` 三值决定正文归谁写：`ai-draft`（缺省，AI 代笔，主编走 Writing 六步法）/ `co-write`（逐章指派谁写，主编动笔前先问清本章归谁）/ `author-draft`（全书作者亲笔，主编只备料、审稿、记账，永不代写）。文件里没有 `mode` 键的旧项目一律按 `ai-draft` 处理。
 
 ### volumes.yml
 `id` 与章节文件名前缀严格一致（`v01` ↔ `chapters/v01-cXXX.md`），index.yml 的卷分组按本文件顺序输出。`chapters` 范围写法 `001-020` 是给人看的计划值，运行时以章节文件实况为准。
@@ -131,6 +131,6 @@ total: {chapters: 21, words: 65210, accepted: 18}
 - `maoying index` 是第 3 节重建逻辑的人工兜底（主编的日常路径是让 lore 角色直接重建）；
 - `maoying export [dir]` 导出全书为 md / txt / epub（默认 md；`--out` 改输出目录，缺省 `<dir>/exports/`）；
 - `maoying brief [dir] <chapter>` 组装单章写作卡（章纲 + 前章结尾 + 出场角色卡 + 活跃伏笔）；`--out <文件>` 落盘，缺省打到 stdout；
-- `maoying check [dir]` 静态体检（不调模型）：frontmatter 完整性、枚举值（含 phase）、章号卷号一致、伏笔章号引用、时间线年份、关系卡引用，并把本节 phase 完成判据落成静态检查——phase 到 outline 及之后仍缺主角卡/核心反派卡/世界观条目/分卷规划即报 error（判据不满足回上一阶段补齐）。
+- `maoying check [dir]` 静态体检（不调模型）：frontmatter 完整性、枚举值（含 phase）、章号卷号一致、伏笔章号引用、时间线年份、关系卡引用，并把本节 phase 完成判据落成静态检查——phase 到 outline 及之后仍缺主角卡/核心反派卡/世界观条目/分卷规划，或有两张及以上角色卡而 relations.yml 为空，即报 error（判据不满足回上一阶段补齐）。
 
 六者都零依赖，解析器只认本规范的两类形态（平键映射、顶层数组）；深度嵌套不在支持范围——这是规范约束的执行手段之一。

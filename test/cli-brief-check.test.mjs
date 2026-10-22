@@ -782,7 +782,31 @@ test('checkProject：phase 越枚举与阶段就绪判据——outline 起查核
       '---\nlabel: hypothesis\nreferences: []\n---\n\n听器物之语，鉴其流转。\n',
     )
     write(path.join(fullDir, 'volumes.yml'), '- id: v01\n  title: 第一卷\n  summary: 一句话定位\n  chapters: 001-010\n')
+    write(path.join(fullDir, 'relations.yml'), '- a: protag\n  b: antag\n  type: 宿敌\n  intensity: 4\n  started: v01-c001\n  ended: ""\n')
     assert.equal(gateProblems(checkProject(fullDir)).length, 0)
+
+    // ⑥ 两张卡但 relations.yml 为空 → 关系网判据报一条 error（六期补）
+    const noRelDir = mk('outline-no-relations')
+    write(path.join(noRelDir, 'project.yml'), 'phase: outline\nmode: ai-draft\n')
+    write(path.join(noRelDir, 'characters/protag.md'), GU_CARD)
+    write(path.join(noRelDir, 'characters/antag.md'), SHEN_CARD)
+    write(
+      path.join(noRelDir, 'science/ting-wu.md'),
+      '---\nlabel: hypothesis\nreferences: []\n---\n\n听器物之语，鉴其流转。\n',
+    )
+    write(path.join(noRelDir, 'volumes.yml'), '- id: v01\n  title: 第一卷\n  summary: 一句话定位\n  chapters: 001-010\n')
+    assert.ok(checkProject(noRelDir).problems.some((p) => p.level === 'error' && p.message.includes('relations.yml 为空')))
+
+    // ⑦ 单卡项目（不足两张卡）不触发关系网判据——一卡无关系可言
+    const oneCardDir = mk('outline-one-card')
+    write(path.join(oneCardDir, 'project.yml'), 'phase: outline\nmode: ai-draft\n')
+    write(path.join(oneCardDir, 'characters/protag.md'), GU_CARD)
+    write(
+      path.join(oneCardDir, 'science/ting-wu.md'),
+      '---\nlabel: hypothesis\nreferences: []\n---\n\n听器物之语，鉴其流转。\n',
+    )
+    write(path.join(oneCardDir, 'volumes.yml'), '- id: v01\n  title: 第一卷\n  summary: 一句话定位\n  chapters: 001-010\n')
+    assert.ok(!checkProject(oneCardDir).problems.some((p) => p.message.includes('relations.yml')))
 
     // ⑤ 无 project.yml/phase 键（旧项目形态）→ 不查也不报
     const bareDir = mk('bare')
