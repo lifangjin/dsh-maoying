@@ -89,7 +89,7 @@ The author-draft loop — you just write, hand it over, and the chores are taken
 
 After receiving a manuscript you get three things: a **review checklist** (issues only, no rewriting — applying them is up to you), a **ledger backfill** (foreshadowing / timeline / relations / memory / clue board recorded from what your text actually does, even off-plan changes, tagged `backfill`), and the **next chapter outline** (`novel/outlines/vXX-cXXX.md`, ready to write from).
 
-Companion commands: `maoying brief <dir> <chapter>` packs a per-chapter writing card (outline + previous ending + character cards + active foreshadowing — carry it to any editor or AI), and `maoying check <dir>` runs a zero-model static check (frontmatter completeness, foreshadow chapter references, timeline ordering — no model calls; LLM review goes through the chief).
+Companion commands: `maoying brief <dir> <chapter>` packs a per-chapter writing card (outline + previous ending + character cards + active foreshadowing — carry it to any editor or AI), and `maoying check <dir>` runs a zero-model static check (frontmatter completeness, foreshadow chapter references, timeline ordering, phase readiness gates — no model calls; LLM review goes through the chief).
 
 ## Methodology Skills
 
@@ -124,7 +124,7 @@ maoying stats [dir]    # per-chapter CJK counts, status breakdown, current phase
 maoying index [dir]    # rebuild index.yml from volumes.yml + chapters/ (derived file)
 maoying export [dir]   # export the book: --format md|txt|epub (default md), --out <dir> to change destination
 maoying brief [dir] <chapter>  # pack a per-chapter writing card (outline + previous ending + character cards + active foreshadowing); --out to write to disk, stdout by default
-maoying check [dir]    # static check (no model calls): frontmatter / enums / chapter numbers / foreshadow refs / timeline years / relation-card refs
+maoying check [dir]    # static check (no model calls): frontmatter / enums / chapter numbers / foreshadow refs / timeline years / relation-card refs / phase readiness gates
 ```
 
 Export examples:

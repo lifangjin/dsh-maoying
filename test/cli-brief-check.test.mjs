@@ -111,6 +111,32 @@ const C002_BODY = [
   '她没有拔刀，先把袖口的银扣按了下去。',
 ].join('\n\n')
 
+const GU_CARD = `---
+name: 顾长风
+age: 24
+gender: 男
+role: protagonist
+appearance: 玄氅佩刀，眉眼冷峻
+personality: 外冷内热，重诺少言
+background: 北境戍卒出身，家破后入镖局
+motivation: 查明北境雪灾背后的隐情
+arc: 从孤身查案到守护北境
+markers:
+  - 想事情时擦刀
+---
+
+备注：全书主角。
+`
+
+const WORLD_XUEZAI = `---
+category: 事件
+tags:
+  - 北境
+---
+
+三年前的北境雪灾压塌南口粮道，冻河改道，当铺行当随之兴起。
+`
+
 const LIN_CARD = `---
 name: 林晚儿
 age: 19
@@ -269,9 +295,11 @@ function buildCleanSample(dir, { withOutline3 = true } = {}) {
   write(path.join(dir, 'chapters/v01-c001.md'), chapterFm({ num: 1, title: '雪夜来客', status: 'accepted' }) + longChapterBody() + '\n')
   write(path.join(dir, 'chapters/v01-c002.md'), chapterFm({ num: 2, title: '雪夜再临', status: 'writing', writer: 'author' }) + C002_BODY + '\n')
   write(path.join(dir, 'chapters/v01-c003.md'), chapterFm({ num: 3, title: '废驿对峙', status: 'pending' }) + '正文还没动笔。\n')
+  write(path.join(dir, 'characters/gu-changfeng.md'), GU_CARD)
   write(path.join(dir, 'characters/lin-waner.md'), LIN_CARD)
   write(path.join(dir, 'characters/shen-mo.md'), SHEN_CARD)
   write(path.join(dir, 'characters/zhao-laotou.md'), ZHAO_CARD)
+  write(path.join(dir, 'world/bei-jing-xue-zai.md'), WORLD_XUEZAI)
   write(path.join(dir, 'outlines/v01-c002.md'), OUTLINE_C002)
   if (withOutline3) write(path.join(dir, 'outlines/v01-c003.md'), OUTLINE_C003)
   write(path.join(dir, 'foreshadows.yml'), CLEAN_FORESHADOWS)
@@ -701,13 +729,64 @@ test('checkProject：逐类坏样例各报一条，计数自洽', () => {
     // 角色卡 / 模式
     assert.ok(find('error', 'characters/broken.md', '缺少 name'))
     assert.ok(find('error', 'project.yml', 'mode 越枚举：solo'))
+    // 阶段就绪判据（phase: writing ≥ outline）：坏样例无主角卡/反派卡/world 条目（volumes 在案不报）
+    assert.ok(find('error', 'characters/', 'protagonist'))
+    assert.ok(find('error', 'characters/', 'antagonist'))
+    assert.ok(find('error', 'world/', 'world/ 与 science/ 均无条目'))
     // 汇总口径
     assert.equal(result.summary.chapters, 5)
     assert.equal(result.summary.foreshadows, 4)
-    assert.equal(result.summary.problems.error, 10)
+    assert.equal(result.summary.problems.error, 13)
     assert.equal(result.summary.problems.warn, 7)
     assert.equal(result.problems.filter((p) => p.level === 'error').length, result.summary.problems.error)
     assert.equal(result.problems.filter((p) => p.level === 'warn').length, result.summary.problems.warn)
+  })
+})
+
+test('checkProject：phase 越枚举与阶段就绪判据——outline 起查核心设定件', () => {
+  withWorkspace('check-phase-gates', (dir) => {
+    const mk = (name) => {
+      const d = path.join(dir, name)
+      write(path.join(d, 'chapters/v01-c001.md'), chapterFm({ num: 1, title: '开局章' }) + '正文。\n')
+      return d
+    }
+    const gateProblems = (r) => r.problems.filter((p) => p.message.includes('判据'))
+
+    // ① phase 越枚举 → error
+    const badEnumDir = mk('bad-enum')
+    write(path.join(badEnumDir, 'project.yml'), 'phase: writting\nmode: ai-draft\n')
+    const badEnum = checkProject(badEnumDir)
+    assert.ok(badEnum.problems.some((p) => p.level === 'error' && p.message.includes('phase 越枚举：writting')))
+
+    // ② phase: outline 四件核心设定件全缺 → 主角卡/反派卡/world/volumes 各报一条 error
+    const missingDir = mk('outline-missing')
+    write(path.join(missingDir, 'project.yml'), 'phase: outline\nmode: ai-draft\n')
+    const missing = checkProject(missingDir)
+    assert.ok(missing.problems.some((p) => p.level === 'error' && p.message.includes('role: protagonist')))
+    assert.ok(missing.problems.some((p) => p.level === 'error' && p.message.includes('role: antagonist')))
+    assert.ok(missing.problems.some((p) => p.level === 'error' && p.message.includes('world/ 与 science/')))
+    assert.ok(missing.problems.some((p) => p.level === 'error' && p.message.includes('volumes.yml 为空或缺失')))
+
+    // ③ phase: setting 同样缺件 → 判据不启用（新项目正常态，零判据问题）
+    const settingDir = mk('setting-clean')
+    write(path.join(settingDir, 'project.yml'), 'phase: setting\nmode: ai-draft\n')
+    assert.equal(gateProblems(checkProject(settingDir)).length, 0)
+
+    // ④ 判据件齐（science 条目也算世界观落盘）→ outline 起零判据问题
+    const fullDir = mk('outline-full')
+    write(path.join(fullDir, 'project.yml'), 'phase: outline\nmode: ai-draft\n')
+    write(path.join(fullDir, 'characters/protag.md'), GU_CARD)
+    write(path.join(fullDir, 'characters/antag.md'), SHEN_CARD)
+    write(
+      path.join(fullDir, 'science/ting-wu.md'),
+      '---\nlabel: hypothesis\nreferences: []\n---\n\n听器物之语，鉴其流转。\n',
+    )
+    write(path.join(fullDir, 'volumes.yml'), '- id: v01\n  title: 第一卷\n  summary: 一句话定位\n  chapters: 001-010\n')
+    assert.equal(gateProblems(checkProject(fullDir)).length, 0)
+
+    // ⑤ 无 project.yml/phase 键（旧项目形态）→ 不查也不报
+    const bareDir = mk('bare')
+    assert.equal(gateProblems(checkProject(bareDir)).length, 0)
   })
 })
 

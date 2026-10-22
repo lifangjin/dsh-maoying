@@ -124,7 +124,7 @@ maoying stats [dir]    # 逐章 CJK 字数、状态分布、当前 phase
 maoying index [dir]    # 从 volumes.yml + chapters/ 重建 index.yml（派生文件）
 maoying export [dir]   # 导出全书：--format md|txt|epub（默认 md），--out <目录> 改输出位置
 maoying brief [dir] <chapter>  # 组装单章写作卡（章纲+前章结尾+角色卡+活跃伏笔）；--out 落盘，缺省 stdout
-maoying check [dir]    # 静态体检（不调模型）：frontmatter/枚举/章号/伏笔引用/时间线年份/关系卡引用
+maoying check [dir]    # 静态体检（不调模型）：frontmatter/枚举/章号/伏笔引用/时间线年份/关系卡引用/phase 就绪判据
 ```
 
 export 示例：

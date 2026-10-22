@@ -164,7 +164,7 @@ persona prefix 内容骨架（agent.cordis.yml 内联，中文书写）：
 - `maoying index [dir]`：从 chapters/ 重建 index.yml（卷/章/标题/状态/字数/一句话梗概）。
 - `maoying export [dir]`：导出全书为 md / txt / epub（默认 md；`--out` 改输出目录，缺省 `<dir>/exports/`；同名自动加序号不覆盖）。
 - `maoying brief [dir] <chapter>`：组装单章写作卡（章纲 + 前章结尾 + 出场角色卡 + 活跃伏笔）；`--out <文件>` 落盘，缺省打到 stdout。
-- `maoying check [dir]`：静态体检（不调模型），与面板/规范同一套规则（frontmatter 完整性、枚举、章号、伏笔引用、时间线年份、关系卡引用）。
+- `maoying check [dir]`：静态体检（不调模型），与面板/规范同一套规则（frontmatter 完整性、枚举、章号、伏笔引用、时间线年份、关系卡引用、phase 阶段就绪判据）。
 - 主编人设里写明：定稿维护后由 lore 角色直接重写 index.yml（文件规范写明格式），CLI `maoying index` 仅供人工兜底；stats / init 供人工使用。
 
 ## 8. 二期路线
@@ -205,5 +205,5 @@ project.yml 加 `mode` 字段：`ai-draft`（默认，现状）/ `co-write`（�
 ### 9.6 P1 工具
 
 - `maoying brief <dir> <章号>` 写作卡：章纲 + 前章结尾约 1500 字 + 出场角色卡 + 活跃伏笔节选，打成一个 md（stdout 或 --out）。给作者带去任意编辑器/其他 AI；
-- `maoying check <dir>` 静态体检（**不调模型**——LLM 审校走主编）：frontmatter 完整性、五维缺键、状态枚举、章号/卷号规范、伏笔章号引用存在性、时间线年份乱序、角色卡悬空引用；
+- `maoying check <dir>` 静态体检（**不调模型**——LLM 审校走主编）：frontmatter 完整性、五维缺键、状态枚举、章号/卷号规范、伏笔章号引用存在性、时间线年份乱序、角色卡悬空引用、phase 枚举与阶段就绪判据（outline 起查主角卡/核心反派卡/世界观条目/分卷规划）；
 - 面板三件：章节抽屉加章纲对照栏 + 复制文件路径按钮；伏笔看板卡上 `source: backfill` 显示「回填」徽章；章节 tab 顶部「按单写作」区块（有章纲且 status=pending 的章，按序列章纲节选；未建章的孤儿章纲照列——可看章纲全文、一键建章，0.1.15 起）。

@@ -12,7 +12,7 @@
  *   maoying export [dir]  导出全书：--format md|txt|epub（默认 md）、--out <目录>
  *   maoying brief [dir] <chapter> [--out <文件>]
  *                         组装某章写作卡（章纲+前章结尾+出场角色卡+活跃伏笔）
- *   maoying check [dir]   静态体检（不调模型）：frontmatter/枚举/章号/伏笔引用等
+ *   maoying check [dir]   静态体检（不调模型）：frontmatter/枚举/章号/伏笔引用/阶段就绪判据等
  *
  * 子命令出错 exit 1，中文报错。
  */
@@ -446,7 +446,7 @@ const HELP_TEXT = `毛颖（maoying）—— 网文创作项目 CLI
   maoying export [dir]   导出全书：--format md|txt|epub（默认 md），--out <目录> 改输出位置
   maoying brief [dir] <chapter>
                          组装某章写作卡（章纲+前章结尾+出场角色卡+活跃伏笔）；--out <文件> 落盘，缺省打到 stdout
-  maoying check [dir]    静态体检（不调模型）：frontmatter 完整性、枚举值、章号卷号一致、伏笔章号引用、时间线年份、关系卡引用
+  maoying check [dir]    静态体检（不调模型）：frontmatter 完整性、枚举值、章号卷号一致、伏笔章号引用、时间线年份、关系卡引用、phase 阶段就绪判据
 
 说明：
   novel/ 目录的数据规范见 templates/novel/README.md（或项目内 novel/README.md）。

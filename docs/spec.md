@@ -131,6 +131,6 @@ total: {chapters: 21, words: 65210, accepted: 18}
 - `maoying index` 是第 3 节重建逻辑的人工兜底（主编的日常路径是让 lore 角色直接重建）；
 - `maoying export [dir]` 导出全书为 md / txt / epub（默认 md；`--out` 改输出目录，缺省 `<dir>/exports/`）；
 - `maoying brief [dir] <chapter>` 组装单章写作卡（章纲 + 前章结尾 + 出场角色卡 + 活跃伏笔）；`--out <文件>` 落盘，缺省打到 stdout；
-- `maoying check [dir]` 静态体检（不调模型）：frontmatter 完整性、枚举值、章号卷号一致、伏笔章号引用、时间线年份、关系卡引用。
+- `maoying check [dir]` 静态体检（不调模型）：frontmatter 完整性、枚举值（含 phase）、章号卷号一致、伏笔章号引用、时间线年份、关系卡引用，并把本节 phase 完成判据落成静态检查——phase 到 outline 及之后仍缺主角卡/核心反派卡/世界观条目/分卷规划即报 error（判据不满足回上一阶段补齐）。
 
 六者都零依赖，解析器只认本规范的两类形态（平键映射、顶层数组）；深度嵌套不在支持范围——这是规范约束的执行手段之一。
