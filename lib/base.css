@@ -709,6 +709,33 @@ html[data-dsh-maoying-active]:not([data-dsh-mnemon-active]):not([data-dsh-taskbo
   overflow-wrap: anywhere;
 }
 .myt-graphFoot { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; color: var(--dsw-alias-label-tertiary); font-size: 11px; }
+
+/* ── 关系图工具角标：＋/－ 缩放常驻；全屏按钮能力检测通过才渲染 ───────── */
+.myt-graphTools { position: absolute; top: 10px; right: 10px; display: flex; gap: 6px; z-index: 3; }
+.myt-graphTool {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 7px;
+  background: var(--dsw-alias-bg-layer-2);
+  color: var(--dsw-alias-label-secondary);
+  font: inherit;
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+}
+.myt-graphTool:hover { background: var(--dsw-alias-interactive-bg-hover); color: var(--dsw-alias-label-primary); }
+.myt-graphToolText { width: auto; padding: 0 10px; font-size: 12px; line-height: 18px; }
+.myt-graphWrap:fullscreen,
+.myt-graphWrap:-webkit-full-screen {
+  border: none;
+  border-radius: 0;
+  background: var(--dsw-alias-bg-base, var(--dsw-alias-bg-layer-1));
+}
 .myt-unlinked { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
 .myt-unlinkedTag { padding: 1px 8px; border-radius: 999px; border: 1px dashed var(--dsw-alias-border-l2); color: var(--dsw-alias-label-tertiary); font-size: 11px; line-height: 16px; }
 
