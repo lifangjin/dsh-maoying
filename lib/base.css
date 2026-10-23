@@ -717,6 +717,7 @@ html[data-dsh-maoying-active]:not([data-dsh-mnemon-active]):not([data-dsh-taskbo
 .myt-legendDot[data-role="protagonist"] { background: #f53f3f; }
 .myt-legendDot[data-role="supporting"] { background: #165dff; }
 .myt-legendDot[data-role="antagonist"] { background: #1d2129; border: 1px solid var(--dsw-alias-border-l4, var(--dsw-alias-border-l2)); }
+.myt-legendDot[data-role="minor"] { background: #fadc19; border: 1px solid color-mix(in srgb, var(--dsw-alias-label-tertiary) 60%, transparent); }
 
 /* ── 关系图工具角标：＋/－ 缩放常驻；全屏按钮能力检测通过才渲染 ───────── */
 .myt-graphTools { position: absolute; top: 10px; right: 10px; display: flex; gap: 6px; z-index: 3; }
