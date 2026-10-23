@@ -59,13 +59,13 @@ npm install -g dsh-maoying       # 或装成全局 maoying 命令
 
 > 第三章可以开写了吗？
 
-主编做衔接检查，委派大纲师出本章大纲（含五维叙事字段），过目后派写手写正文、审校审稿（清单 + 四维一致性扫描），有问题回写手修，通过后置 accepted 并委派设定管理员做定稿维护——你只需要在决策点拍板。
+主编做衔接检查，委派大纲师出本章大纲（含五维叙事字段），过目后派写手写正文、审校审稿（清单 + 一致性扫描：冲突/时间线/伏笔/设定 + 连贯六维：行为/因果/资源/身份/伤势/战力），有问题回写手修，通过后由设定管理员一次跑完定稿维护（章纲对照 + 五本账 + index 重建 + 一致性核对，全部落盘才置 accepted）——你只需要在决策点拍板。
 
 **集中审查**：
 
 > 前 20 章做一次一致性检查。
 
-主编推进 phase 到 consistency，审校扫描冲突/时间线/伏笔/设定四维，问题按严重度排好交回写手。
+主编推进 phase 到 consistency，审校扫描冲突/时间线/伏笔/设定与连贯六维（行为/因果/资源/身份/伤势/战力），问题按严重度排好交回写手。
 
 用户回「ok / 可以 / 继续」即视为确认，主编直接推进，不复述确认。
 
@@ -89,7 +89,7 @@ author-draft 下的协作循环——你只管写，交稿即接管杂务：
 
 主编收稿后你会拿到三样东西：**审校意见清单**（只挑问题、不代改，改不改随你）、**账本回填**（伏笔/时间线/关系/记忆/线索五本账按你正文实际发生的记，计划外的改动也能认领，来源标 `backfill`）、**下一章章纲**（`novel/outlines/vXX-cXXX.md`，拿着就能写）。圣域纪律：`chapters/` 正文唯作者可改，agent 至多更新 frontmatter 的 summary 与五维字段，且先建议后动手。
 
-配套命令：`maoying brief <dir> <章号>` 打包写作卡（章纲 + 前章结尾 + 角色卡 + 活跃伏笔，带去任意编辑器或其他 AI），`maoying check <dir>` 做零模型静态体检（frontmatter 完整性、伏笔章号引用、时间线乱序等，不调模型——LLM 审校走主编）。
+配套命令：`maoying brief <dir> <章号>` 打包写作卡（章纲 + 前章结尾 + 角色卡 + 活跃伏笔，带去任意编辑器或其他 AI），`maoying check <dir>` 做零模型静态体检（frontmatter 完整性、伏笔章号引用与超期、章纲钩子小节、时间线乱序、AI 味统计（句式重复/比喻密度/句长节奏）等，不调模型——LLM 审校走主编）。
 
 ## 方法论技能
 
@@ -111,7 +111,7 @@ rm -rf "${DSH_HOME:-$HOME/.dsh}/skills/"maoying-*
 
 ## novel/ 数据规范
 
-`novel/` 目录是整个插件的数据库：project.yml（元信息与七阶段 phase）、style.md（写作风格基准）、volumes.yml、chapters/（frontmatter 五维叙事字段 + 正文）、characters/（角色卡）、world/、science/（三色设定）、relations.yml、foreshadows.yml（伏笔状态机）、timeline.yml、memories.yml（含出场记录与承诺账）、clue-board.yml、research/、exports/。全部格式、示例与设计理由见：
+`novel/` 目录是整个插件的数据库：project.yml（元信息与七阶段 phase）、style.md（写作风格基准）、volumes.yml、chapters/（frontmatter 五维叙事字段 + 正文）、characters/（角色卡）、world/、science/（三色设定）、relations.yml、foreshadows.yml（伏笔状态机）、timeline.yml、memories.yml（出场记录、承诺账、卷级梗概）、clue-board.yml、research/、exports/。全部格式、示例与设计理由见：
 
 - 速查版：项目初始化后的 `novel/README.md`（模板源 [templates/novel/README.md](templates/novel/README.md)）
 - 完整版：[docs/spec.md](docs/spec.md)（为什么不用 SQLite、五维字段定义、伏笔状态机语义、出场记录约定）
@@ -124,7 +124,7 @@ maoying stats [dir]    # 逐章 CJK 字数、状态分布、当前 phase
 maoying index [dir]    # 从 volumes.yml + chapters/ 重建 index.yml（派生文件）
 maoying export [dir]   # 导出全书：--format md|txt|epub（默认 md），--out <目录> 改输出位置
 maoying brief [dir] <chapter>  # 组装单章写作卡（章纲+前章结尾+角色卡+活跃伏笔）；--out 落盘，缺省 stdout
-maoying check [dir]    # 静态体检（不调模型）：frontmatter/枚举/章号/伏笔引用/时间线年份/关系卡引用/phase 就绪判据
+maoying check [dir]    # 静态体检（不调模型）：frontmatter/枚举/章号/伏笔引用与超期/章纲钩子/AI 味统计/时间线年份/关系卡引用/phase 就绪判据
 ```
 
 export 示例：

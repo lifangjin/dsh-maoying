@@ -70,9 +70,9 @@ dsh-maoying/
 | 伏笔状态机 | foreshadows.yml（planted/progressing/resolved/abandoned + 预期回收章节 + 优先级） | 文件规范 |
 | 时间线 / 叙事记忆（promise）/ 线索板 | timeline.yml / memories.yml / clue-board.yml | 文件规范 |
 | 人物关系图可视化 | relations.yml 纯数据（一期无图） | 文件规范 |
-| 上下文注入（全量角色+章节+伏笔） | 改为按需读：主编先读 index.yml 概览，写到哪章读哪章的上下文（前章结尾+该章大纲+出场角色卡+活跃伏笔） | 主编人设纪律 |
+| 上下文注入（全量角色+章节+伏笔） | 改为分层门控按需读：常驻项（project/style/主角卡/金手指与核心冲突条目/活跃伏笔）恒读，其余角色卡与 world 条目写到谁读谁、长条目只读 `## 锚点` 段；主编先读 index.yml 概览，写到哪章读哪章的上下文（前章结尾+该章大纲+出场角色卡+活跃伏笔） | 主编人设纪律 |
 | AI 工具集 function calling | 天然消失（agent 直接用文件工具） | DSH 架构红利 |
-| 一致性检查（冲突/时间线/伏笔/设定） | review 角色（审校）：四维扫描 + 审稿清单 | 委派角色 |
+| 一致性检查（冲突/时间线/伏笔/设定 + 连贯六维） | review 角色（审校）：一致性扫描 + 审稿清单 | 委派角色 |
 | 导出 EPUB/MD/TXT | **已交付**：`maoying export`（见 §8）；HTML 从未规划 | CLI |
 | Token 用量统计 | 无需（DSH 自带） | — |
 | Web 管理面板 | **三期** | — |
@@ -91,7 +91,7 @@ novel/
                        #   正文在 body。status: pending|writing|review|accepted
   characters/
     <slug>.md          # frontmatter: name/age/gender/role(protagonist|antagonist|supporting|minor)/
-                       #   appearance/personality/background/motivation/arc/markers[]；body 为备注
+                       #   appearance/personality/background/motivation/arc/markers[]/可选 never_do[]；body 为备注
   world/
     <slug>.md          # frontmatter: category(地点|组织|概念|事件)/tags[]；body 为描述
   science/
@@ -100,7 +100,7 @@ novel/
   foreshadows.yml      # - {id: fs-001, title, status, priority, planted_chapter,
                        #    expected_resolve, resolved_chapter, notes}
   timeline.yml         # - {year, title, description, importance: 1-5, chapter}
-  memories.yml         # - {category: character|location|item|event|promise|appearance|other,
+  memories.yml         # - {category: character|location|item|event|promise|appearance|arc|other,
                        #    content, source_chapter}
   clue-board.yml       # - {kind: clue|red-herring|deduction|question, content,
                        #    related_chapter, resolved: bool}
@@ -118,7 +118,7 @@ novel/
 |---|---|---|---|---|
 | outline | 大纲师 | 卷章规划、章节大纲+五维字段 | continuable | read read_image glob grep write edit bash ask_user_question todo_write |
 | write | 写手 | 章节正文（按大纲写、衔接前章、回报设定变更） | continuable | read read_image glob grep write edit bash ask_user_question todo_write |
-| review | 审校 | 审稿清单 + 四维一致性扫描（只读、出报告不改稿） | one-shot | read read_image glob grep todo_write ask_user_question |
+| review | 审校 | 审稿清单 + 一致性扫描（冲突/时间线/伏笔/设定 + 连贯六维，只读、出报告不改稿） | one-shot | read read_image glob grep todo_write ask_user_question |
 | lore | 设定管理员 | 章节/角色/世界观/伏笔/时间线/记忆/线索板维护，出场记录与伏笔状态推进 | continuable | read glob grep write edit bash ask_user_question todo_write |
 | research | 素材调研员 | 联网考据（历史/地理/专业领域），笔记落 novel/research/ | one-shot | web_search web_fetch glob grep read write bash ask_user_question todo_write |
 
@@ -133,7 +133,7 @@ delegation-labels 静态角色名映射：{outline: 大纲师, write: 写手, re
 persona prefix 内容骨架（agent.cordis.yml 内联，中文书写）：
 
 1. **身份**：网文主编/创作总监，管 project 目录 novel/，重活委派五帮手，自己只做规划、衔接、验收、状态推进。
-2. **开工纪律**：先读 novel/project.yml + index.yml + style.md（若有）；不确定文件格式读 novel/README.md；不全量读章节，写到哪章读哪章上下文（前章结尾 ~1500 字 + 该章 frontmatter + 出场角色卡 + 活跃伏笔节选）。
+2. **开工纪律**：先读 novel/project.yml + index.yml + style.md（若有）；不确定文件格式读 novel/README.md；取上下文分层门控：常驻项恒读（project.yml/style.md/主角卡/金手指与核心冲突条目/活跃伏笔），按需项出场才读（其余角色卡与非核心 world 条目，长条目只读 `## 锚点` 段），跨卷剧情先读 memories.yml 的 arc 卷摘要；不全量读章节，写到哪章读哪章上下文（前章结尾 ~1500 字 + 该章 frontmatter + 按需角色卡 + 活跃伏笔节选）。
 3. **七阶段状态机**（每阶段推进写 project.yml phase）：idea 选题 → setting 设定 → outline 大纲 → writing 写作 → review 审阅 → consistency 一致性 → export 导出。每完成一个里程碑必须推进 phase 并告知用户。
 4. **Writing 六步法**（逐章循环）：
    ① 衔接检查：读前章结尾，确认无断裂；
@@ -141,14 +141,14 @@ persona prefix 内容骨架（agent.cordis.yml 内联，中文书写）：
    ③ 委派 write 写正文（写手人设要求：按大纲覆盖五维、不写崩人设、章尾留钩子），status→writing；
    ④ 委派 review 审稿（清单：语言/节奏/人设符合/不剧透/伏笔推进合理/前后矛盾/风格符合），status→review；
    ⑤ 审稿问题回 write 修（continuable 就地续修）或主编微调；
-   ⑥ 通过后 status→accepted，委派 lore 做定稿维护（出场记录、伏笔状态、记忆、线索板、时间线），`maoying index` 重建概览。
+   ⑥ 定稿维护（原子动作）：委派 lore 一次跑完章纲对照结论（共创模式）+ 五本账（memories/timeline/relations/foreshadows/clue-board）+ `maoying index` 重建概览 + 一致性核对，全部落盘后 status→accepted；中途断了汇报缺口清单再续。
    循环检查：还有非 accepted 章节 → 回 ①。
 5. **Collab 四步共创**（新书冷启动）：设定共创（最小设定集逐项对齐 + 世界观与核心角色卡落盘，设用户拍板点）→ 分卷规划（volumes.yml + 各卷 summary，设用户拍板点）→ 前三章交付（机械自检设定件齐备后走黄金三章：第一章立世界观钩子、第二章立主角动机、第三章立核心冲突）→ 交接循环写作（切 Writing 六步法）。
 6. **简短确认即执行（分级）**：逐章滚动中用户回「ok/可以/继续」直接推进下一步，不再复述确认；冷启动里程碑（设定共创、分卷规划）是方向性拍板点，须列决策点等用户实质回应。
 7. **设定变更上报**：写手回报的临场设定变更（新角色/新地点/伏笔异动）必须经 lore 落盘才算数；发现与既有设定冲突，先停笔报告主编。
 8. **失败处理**：委派失败按 DSH 委派 SOP（diagnose by stop reason，max-tokens 拆章，refusal 换路）。
 
-各帮手 persona 一段话（内联在各委派行），写明本行工具纪律与回报格式（如 review 固定输出四维表格 + 清单勾选）。
+各帮手 persona 一段话（内联在各委派行），写明本行工具纪律与回报格式（如 review 固定输出一致性扫描表格（含连贯六维） + 清单勾选）。
 
 ## 6. 兼容面
 
@@ -190,7 +190,7 @@ project.yml 加 `mode` 字段：`ai-draft`（默认，现状）/ `co-write`（�
 
 ### 9.3 章纲 outlines/
 
-`novel/outlines/vXX-cXXX.md`，**纯 markdown 无 frontmatter**（作者编辑器里打开不碍眼）：本章目标、节拍、出场角色、需埋/需收伏笔、与前章接口。大纲师产物、作者创作输入、review 收稿时的对照基准。不入 index.yml，面板与 brief 现查现拼。
+`novel/outlines/vXX-cXXX.md`，**纯 markdown 无 frontmatter**（作者编辑器里打开不碍眼）：本章目标、节拍、出场角色、需埋/需收伏笔、与前章接口、章尾钩子（独立成 `## 钩子` 节：钩子类型 + 内容，类型对照 maoying-beat-pacing 钩子类型库）。大纲师产物、作者创作输入、review 收稿时的对照基准。不入 index.yml，面板与 brief 现查现拼。
 
 ### 9.4 账本回填（lore 收稿流程）
 

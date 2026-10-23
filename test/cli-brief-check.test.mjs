@@ -12,6 +12,8 @@
  *   - checkProject 规则细化：expected_resolve 排期承诺口径（不查存在性）、
  *     resolved 必填兑现章且不早于埋设章、num 字符串归一、BOM 容错、
  *     重复键提醒、杂散章节文件沉底、解析层杂项（注释剥离/类型漂移/countCjk）；
+ *   - checkProject 三条 warn 新规则：伏笔超期未推进、章纲缺「钩子」小节、
+ *     AI 味统计（checkChapterStyle：连续同式开头 / 比喻词密度 / 句长波动）；
  *   - CLI brief / check：退出码、输出、--out 落盘与 stdout 一致；
  *   - 回归：init / stats / index / export 照常工作。
  */
@@ -30,10 +32,12 @@ const BIN = path.join(PLUGIN_ROOT, 'bin', 'maoying.mjs')
 const {
   buildBrief,
   CHAPTER_STATUSES,
+  checkChapterStyle,
   checkProject,
   collectChapters,
   countCjk,
   flowScalar,
+  FORESHADOW_STALE_CHAPTERS,
   listOutlines,
   parseChapterFile,
   parseFlatYamlArray,
@@ -42,6 +46,9 @@ const {
   splitFrontmatter,
   splitParagraphs,
   stripInlineComment,
+  STYLE_METAPHOR_PER_KILO,
+  STYLE_REPEAT_RUN,
+  STYLE_SENTENCE_CV_MIN,
 } = await import('../lib/novel-parse.mjs')
 
 // ── 工具 ────────────────────────────────────────────────────────────────────
@@ -110,6 +117,18 @@ const C002_BODY = [
   '林晚儿勒住马，盯着雪地里那行深一脚浅一脚的脚印，脚印尽头，废驿的门虚掩着。',
   '她没有拔刀，先把袖口的银扣按了下去。',
 ].join('\n\n')
+
+// AI 味统计夹具：三条指标各只命中一条的正文（前缀轮流换防不触发同式开头，
+// 句数压在句长波动下限之下，比喻词只在一处出现）。
+const STYLE_REPEAT_BODY = '他知道刀在鞘里。他知道马在棚里。他知道风里有人。天亮之前，一切都还来得及补救。'
+const STYLE_METAPHOR_BODY = [
+  '他仿佛看见旧年的雪压塌了粮道。城墙宛如一头伏兽。刀光恍若一线天光。',
+  '北境的雪下了三天三夜，冻河改道，当铺行当随之兴起，旧部名册下落成谜，谁也说不清那半块玉佩的来历。',
+].join('\n')
+const STYLE_FLAT_BODY = Array.from(
+  { length: 24 },
+  (_, i) => `${['风从北来', '雪从天落', '云从山起'][i % 3]}他沿着驿道一直走。`,
+).join('')
 
 const GU_CARD = `---
 name: 顾长风
@@ -201,6 +220,10 @@ const OUTLINE_C002 = `# 第二章章纲 · 雪夜再临
 
 需埋伏笔：无；需收伏笔：无。
 与前章接口：承接第一章末尾的玉佩悬念。
+
+## 章尾钩子
+
+沈墨撂下一句「北境的雪，埋的不止是粮道」，收刀没入风雪；林晚儿借灯笼一照，玉佩缺角与他的刀镡缺口正好吻合。
 `
 
 const OUTLINE_C003 = `# 第三章章纲 · 废驿对峙
@@ -208,6 +231,10 @@ const OUTLINE_C003 = `# 第三章章纲 · 废驿对峙
 本章目标：沈墨与林晚儿在废驿对峙，揭开旧部信物的来历。
 出场角色：林晚儿、沈墨
 与前章接口：承接废驿火光。
+
+## 钩子
+
+对峙收场，赵老头的旱烟袋当啷落地——他认得那半块玉佩。
 `
 
 const CLEAN_PROJECT = `title: 雪葬北境
@@ -869,6 +896,100 @@ test('checkProject：resolved 必填 resolved_chapter，且不得早于 planted_
     const fine = minimalCheckProject(path.join(dir, 'fine'), fm('v01-c001', 'v01-c002'))
     assert.equal(fine.ok, true)
     assert.deepEqual(fine.problems, [])
+  })
+})
+
+test('checkProject：伏笔超期未推进——planted 超阈值给 warn，progressing/邻近阈值不报', () => {
+  // 阈值出处：skills/maoying-foreshadow-discipline/SKILL.md「清理纪律」
+  assert.equal(FORESHADOW_STALE_CHAPTERS, 30)
+  withWorkspace('check-fs-stale', (dir) => {
+    const fm = (id, status, planted) =>
+      [
+        `- id: ${id}`,
+        '  title: 玉佩下落',
+        `  status: ${status}`,
+        '  priority: high',
+        `  planted_chapter: ${planted}`,
+        '  expected_resolve: ""',
+        '  resolved_chapter: ""',
+        '',
+      ].join('\n')
+    // ① 正例：埋设于 v01-c001，全书已写到 v01-c032——间隔 31 章超阈值 → warn
+    const staleDir = path.join(dir, 'stale')
+    write(path.join(staleDir, 'chapters/v01-c001.md'), chapterFm({ num: 1, title: '开局章' }) + '正文。\n')
+    write(path.join(staleDir, 'chapters/v01-c032.md'), chapterFm({ num: 32, title: '最新章' }) + '正文。\n')
+    write(path.join(staleDir, 'foreshadows.yml'), fm('fs-001', 'planted', 'v01-c001'))
+    const stale = checkProject(staleDir)
+    assert.equal(stale.ok, true) // 只 warn 不 error
+    assert.equal(stale.problems.length, 1)
+    assert.equal(stale.problems[0].level, 'warn')
+    assert.equal(stale.problems[0].file, 'foreshadows.yml')
+    assert.equal(
+      stale.problems[0].message,
+      `伏笔 fs-001 埋设于 v01-c001，已 ${FORESHADOW_STALE_CHAPTERS + 1} 章未推进（阈值 ${FORESHADOW_STALE_CHAPTERS} 章）——确认是否遗忘`,
+    )
+    // ② 反例：间隔 1 章（远未到阈值）+ progressing/abandoned 不查——零问题
+    const freshDir = path.join(dir, 'fresh')
+    write(path.join(freshDir, 'chapters/v01-c001.md'), chapterFm({ num: 1, title: '开局章' }) + '正文。\n')
+    write(path.join(freshDir, 'chapters/v01-c002.md'), chapterFm({ num: 2, title: '接续章' }) + '正文。\n')
+    write(
+      path.join(freshDir, 'foreshadows.yml'),
+      [fm('fs-001', 'planted', 'v01-c001'), fm('fs-002', 'progressing', 'v01-c001'), fm('fs-003', 'abandoned', 'v01-c001')].join(
+        '\n',
+      ),
+    )
+    assert.deepEqual(checkProject(freshDir).problems, [])
+  })
+})
+
+test('checkProject：章纲缺「钩子」小节——无钩子标题给 warn，带钩子与空目录不报', () => {
+  withWorkspace('check-outline-hook', (dir) => {
+    // ① 正例：章纲正文无钩子小节（含正文里提「钩子」但不是标题行）→ warn
+    const badDir = path.join(dir, 'bad')
+    write(path.join(badDir, 'chapters/v01-c001.md'), chapterFm({ num: 1, title: '开局章' }) + '正文。\n')
+    write(path.join(badDir, 'outlines/v01-c001.md'), '# 第一章章纲\n\n本章目标：雪夜来客，章尾的钩子留到下一章。\n')
+    const bad = checkProject(badDir)
+    assert.equal(bad.problems.length, 1)
+    assert.equal(bad.problems[0].level, 'warn')
+    assert.equal(bad.problems[0].file, 'outlines/v01-c001.md')
+    assert.equal(bad.problems[0].message, '章纲缺「钩子」小节（## 钩子 或 ## 章尾钩子）——章尾钩子须独立成节写明')
+    // ② 反例：「## 章尾钩子」「### 钩子」都算数；空 outlines/ 目录不报——零问题
+    const goodDir = path.join(dir, 'good')
+    write(path.join(goodDir, 'chapters/v01-c001.md'), chapterFm({ num: 1, title: '开局章' }) + '正文。\n')
+    write(
+      path.join(goodDir, 'outlines/v01-c001.md'),
+      '# 第一章章纲\n\n本章目标：雪夜来客。\n\n## 章尾钩子\n\n马队没入风雪，玉佩缺角对上刀镡缺口。\n',
+    )
+    write(path.join(goodDir, 'outlines/v01-c002.md'), '## 正文安排\n\n先追后谈。\n\n### 钩子\n\n雪地里又多了一行脚印。\n')
+    const emptyDir = path.join(dir, 'empty')
+    write(path.join(emptyDir, 'chapters/v01-c001.md'), chapterFm({ num: 1, title: '开局章' }) + '正文。\n')
+    mkdirSync(path.join(emptyDir, 'outlines'), { recursive: true })
+    assert.deepEqual(checkProject(goodDir).problems, [])
+    assert.deepEqual(checkProject(emptyDir).problems, [])
+  })
+})
+
+test('checkChapterStyle：AI 味统计三指标各自命中，干净正文零消息', () => {
+  // 三条指标互相独立：逐条构造只命中一条的正文，消息逐字对齐
+  assert.deepEqual(checkChapterStyle(STYLE_REPEAT_BODY), [`疑似句式重复：连续 ${STYLE_REPEAT_RUN} 句以「他知」开头`])
+  assert.deepEqual(checkChapterStyle(STYLE_METAPHOR_BODY), [
+    `比喻词密度偏高：3 处 / 0.1千字（阈值 ${STYLE_METAPHOR_PER_KILO}/千字）——AI 味风险`,
+  ])
+  assert.deepEqual(checkChapterStyle(STYLE_FLAT_BODY), [
+    `句长节奏过平：24 句变异系数 0.00（阈值 ${STYLE_SENTENCE_CV_MIN.toFixed(2)}）——长短句交替不足`,
+  ])
+  // 反例：现有长正文 / 短正文 / 空正文三条全不命中
+  assert.deepEqual(checkChapterStyle(longChapterBody()), [])
+  assert.deepEqual(checkChapterStyle(C002_BODY), [])
+  assert.deepEqual(checkChapterStyle(''), [])
+  // checkProject 侧：命中挂在章节文件名上，无正文的章不查
+  withWorkspace('check-style', (dir) => {
+    write(path.join(dir, 'chapters/v01-c001.md'), chapterFm({ num: 1, title: '句式重复章' }) + STYLE_REPEAT_BODY + '\n')
+    write(path.join(dir, 'chapters/v01-c002.md'), chapterFm({ num: 2, title: '无正文章' }))
+    const result = checkProject(dir)
+    const styleWarns = result.problems.filter((p) => p.level === 'warn' && p.message.includes('疑似句式重复'))
+    assert.equal(styleWarns.length, 1)
+    assert.equal(styleWarns[0].file, 'chapters/v01-c001.md')
   })
 })
 

@@ -13,7 +13,7 @@
   - 阶段 `phase`（七态）：`idea` `setting` `outline` `writing` `review` `consistency` `export`
   - 角色 `role`：`protagonist`（主角）`antagonist`（反派）`supporting`（重要配角）`minor`（龙套）
   - 考据 `label`：`known`（史实/公理）`extrapolation`（合理推演）`hypothesis`（自设假说）
-  - 记忆 `category`：`character` `location` `item` `event` `promise` `appearance` `other`
+  - 记忆 `category`：`character` `location` `item` `event` `promise` `appearance` `arc`（卷级梗概）`other`
   - 线索 `kind`：`clue`（线索）`red-herring`（误导）`deduction`（推理）`question`（悬问）
 - 章节文件名 `v<卷号2位>-c<章号3位>.md`（如 `v01-c001.md`）；frontmatter 里的 `volume`/`num` 与文件名保持一致。
 - 角色/世界观/考据文件用小写英文短横线 slug 命名（如 `lin-waner.md`）；其他文件引用角色时用同一个 slug。
@@ -73,7 +73,7 @@ interpersonal_tension: 本章人物关系中的压力与变化
 
 ## outlines/vXX-cXXX.md
 
-章纲：共创模式（co-write / author-draft）下大纲师写给作者的创作输入，与章节文件一一对应（`outlines/v01-c005.md` ↔ `chapters/v01-c005.md`）。纯 markdown、无 frontmatter——作者在任意编辑器打开就要能看。五件内容写全：
+章纲：共创模式（co-write / author-draft）下大纲师写给作者的创作输入，与章节文件一一对应（`outlines/v01-c005.md` ↔ `chapters/v01-c005.md`）。纯 markdown、无 frontmatter——作者在任意编辑器打开就要能看。六件内容写全，章尾钩子从「与前章接口」独立成 `## 钩子` 节：
 
 ```markdown
 # 第 5 章 雪夜来客
@@ -82,14 +82,19 @@ interpersonal_tension: 本章人物关系中的压力与变化
 - 节拍：……（场景推进顺序与情绪起伏）
 - 出场角色：……（谁上场、各带什么目的）
 - 需埋/需收伏笔：……（对照 foreshadows.yml 报 id）
-- 与前章接口：……（从哪个钩子接、结尾钩到哪）
+- 与前章接口：……（从哪个钩子接）
+
+## 钩子
+
+- 类型：……（对照 maoying-beat-pacing 的钩子类型库选型）
+- 内容：……（章尾钩到哪，下一章的前提被什么改变）
 ```
 
 颗粒度标准：作者拿着就能动笔。章纲是计划不是章节事实，不入 index.yml；大纲师写、作者读、review 收稿时对照评偏离——作者没照章纲写不算错，账本永远跟正文走。
 
 ## characters/<slug>.md
 
-角色卡。`markers` 是角色的辨识性口癖/习惯清单（审校盯人设用）；body 写备注。
+角色卡。`markers` 是角色的辨识性口癖/习惯清单（审校盯人设用）；可选 `never_do` 是行为红线——此角色绝不会做的事（如「绝不当众认输」「从不撒谎害人」），出场即逐条对照，越线记 P0；body 写备注。
 
 ```markdown
 ---
@@ -104,6 +109,8 @@ motivation: 行动动机
 arc: 全书成长弧线（从什么到什么）
 markers:                 # 辨识标记，一行一个
   - 紧张时摩挲袖口
+never_do:                # 可选：行为红线（绝不会做的事），一行一个
+  - 绝不当众认输
 ---
 
 备注……
@@ -111,7 +118,7 @@ markers:                 # 辨识标记，一行一个
 
 ## world/<slug>.md
 
-世界观条目。`category` 用中文四类：`地点` `组织` `概念` `事件`；body 是描述。
+世界观条目。`category` 用中文四类：`地点` `组织` `概念` `事件`；body 是描述。长条目（>100 行）建议在开头放 `## 锚点` 段——10 行内摘要（这是什么、规则边界、与主线的关系），agent 取上下文只读锚点段与相关小节，不整读长文。
 
 ```markdown
 ---
@@ -183,7 +190,7 @@ references:               # 依据来源，一行一个（已知设定 id 或现
 
 ## memories.yml
 
-叙事记忆：正文里已成立的事实账。`appearance` 是出场记录（谁在哪章登过场），`promise` 是角色说出口的承诺（读者记着账）。只记已写进正文的事实，不记计划。
+叙事记忆：正文里已成立的事实账。`appearance` 是出场记录（谁在哪章登过场），`promise` 是角色说出口的承诺（读者记着账），`arc` 是卷级剧情梗概（一卷一条，卷末凝固，写定不再重写）。只记已写进正文的事实，不记计划。
 
 ```yaml
 - category: appearance    # character|location|item|event|promise|appearance|other

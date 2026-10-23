@@ -10,7 +10,7 @@
 - **人机共读**。作者随时打开 foreshadows.yml 看账本、手改一个错字；数据库要做到同样的事得先写一层 UI 或 CLI——而文件天然免费。
 - **git 即版本控制**。整本书的历史就是目录的历史：哪一章改了什么、伏笔账本何时被谁推进，`git log -p` 一目了然；回滚一章就是回滚一个文件。SQLite 的 blob 历史在 git 里是噪音。
 - **零迁移零运维**。schema 演进 = 在 README 里补两行说明 + 旧文件照读；没有 migration 脚本，没有锁文件，没有「数据库被另一个进程占用」。
-- **上下文按需取**。主编不全量读章节：先读 index.yml 概览，写到哪章读哪章的上下文（前章结尾 + 该章 frontmatter + 出场角色卡 + 活跃伏笔节选）。文件粒度就是天然的上下文裁剪单元。
+- **上下文按需取（分层门控）**。取上下文分两层：**常驻项**恒读——project.yml、style.md、主角卡、金手指与核心冲突的 world 条目、活跃伏笔；**按需项**出场/涉及时才读——其余角色卡与非核心 world 条目，写到哪章读哪章；长条目（>100 行）不整读，只读开头锚点段与相关小节（约定条目用 `## 锚点` 开头放 10 行内摘要，见速查版 world/ 说明）。在此之上主编不全量读章节：先读 index.yml 概览，写到哪章读哪章的上下文（前章结尾 + 该章 frontmatter + 按需角色卡 + 活跃伏笔节选）。文件粒度就是天然的上下文裁剪单元。
 
 什么时候该换数据库：多人同时写同一本书、单书章节数到千级、需要全文检索正文以外的高级查询。一期都不在诉求内。
 
@@ -47,15 +47,15 @@
 - 可选 `writer` 键（co-write 用）：`author | ai`，记本章正文归谁写；缺省按 project.yml 的 `mode` 推——`author-draft` 下整本按 author、`ai-draft` 下整本按 ai。键只做记录与面板展示，状态机仍看 `status`。
 
 ### outlines/vXX-cXXX.md
-章纲：共创模式（`co-write` / `author-draft`）下大纲师给作者的创作输入，与章节文件一一对应（`outlines/v01-c005.md` ↔ `chapters/v01-c005.md`）。**纯 markdown、无 frontmatter**——作者会在任意编辑器里打开它，`---` 围栏只会碍眼（第 1 节「frontmatter 用围栏」的总约束不适用本目录）。五件内容写全：本章目标、节拍（场景推进顺序与情绪起伏）、出场角色（谁上场、各带什么目的）、需埋/需收伏笔（对照 foreshadows.yml 报 id）、与前章接口（从哪个钩子接、结尾钩到哪）。颗粒度标准：作者拿着就能动笔，不写「参见大纲」式的空转。
+章纲：共创模式（`co-write` / `author-draft`）下大纲师给作者的创作输入，与章节文件一一对应（`outlines/v01-c005.md` ↔ `chapters/v01-c005.md`）。**纯 markdown、无 frontmatter**——作者会在任意编辑器里打开它，`---` 围栏只会碍眼（第 1 节「frontmatter 用围栏」的总约束不适用本目录）。六件内容写全：本章目标、节拍（场景推进顺序与情绪起伏）、出场角色（谁上场、各带什么目的）、需埋/需收伏笔（对照 foreshadows.yml 报 id）、与前章接口（从哪个钩子接）、章尾钩子——独立成 `## 钩子` 节（钩子类型 + 内容，类型对照 maoying-beat-pacing 的钩子类型库，写明下一章前提被什么改变）。颗粒度标准：作者拿着就能动笔，不写「参见大纲」式的空转。
 
 约定：章纲是计划不是章节事实，**不入 index.yml**（index 只索引章节实况），面板与 `maoying brief` 现查现拼。谁写谁读：大纲师写，作者读，review 收稿时对照评偏离——作者没照章纲写不算错，偏离如实报给主编裁决，账本永远跟正文走。
 
 ### characters/<slug>.md
-`role` 四态 `protagonist|antagonist|supporting|minor`。`markers`（辨识标记）是审校盯人设的抓手：口癖、习惯动作、禁忌。角色卡一经 `accepted` 章节引用，改动须过主编（写手发现需要新设定时上报，不得自行改卡）。
+`role` 四态 `protagonist|antagonist|supporting|minor`。`markers`（辨识标记）是审校盯人设的抓手：口癖、习惯动作、禁忌。可选 `never_do`（字符串数组）是行为红线——此角色绝不会做的事（如「绝不当众认输」「从不撒谎害人」）；写手落笔前过一遍，审校对出场角色逐条对照，越线即 P0（口径见审校清单技能人设层）。角色卡一经 `accepted` 章节引用，改动须过主编（写手发现需要新设定时上报，不得自行改卡）。
 
 ### world/<slug>.md
-`category` 用中文四类 `地点|组织|概念|事件`（值是给人和 agent 读的，中文检索更直接）；`tags` 供 grep 圈定范围。
+`category` 用中文四类 `地点|组织|概念|事件`（值是给人和 agent 读的，中文检索更直接）；`tags` 供 grep 圈定范围。长条目（>100 行）建议以 `## 锚点` 段开头——10 行内摘要（这是什么、规则边界、与主线的关系），供分层取上下文只读锚点段与相关小节。
 
 ### science/<slug>.md
 三色标注：`known`（史实/公理，写了不算错）→ `extrapolation`（从 known 合理推演，读者能接受）→ `hypothesis`（自设假说，全书内部自洽即可）。审校的「设定一致性」扫描以此分级裁判：违反 known 是硬伤，hypothesis 之间打架按主编裁决。`references` 指向依赖的其他设定 id 或现实出处，形成可追溯的设定依赖链。
@@ -89,6 +89,8 @@ planted ──→ progressing ──→ resolved
 
 - **出场记录**：`category: appearance`，一章一条记「谁在哪章登场」；主角每章都记（审校查隐身主角），配角记首次登场与关键回场；
 - **承诺**：`category: promise`，角色说出口的承诺逐条记账——读者记得每一句「我一定会回来」，审校查兑现；
+- **卷级梗概**：`category: arc`，一卷一条，卷末由 lore 从本卷正文与账本凝固——写定不再重写，下一卷另起新条；
+- **三层冻结摘要**：章级摘要 = 章节 frontmatter `summary`（`accepted` 后冻结不重写）、卷级摘要 = 本条 `arc`、全书概览 = index.yml（派生重建）——上下文恢复时卷摘要优先、章级细节补差，禁止滚动重写大摘要；
 - 只记已写进正文的事实；计划中的事记在章节 frontmatter 或 foreshadows.yml，不进记忆；
 - 不改动既有条目（写错了由主编裁决后修正，留 notes 说明）。
 
@@ -102,6 +104,8 @@ planted ──→ progressing ──→ resolved
 `chapters/` 目录的正文唯作者可改。author-draft / co-write 的 author 章节上，agent（主编与帮手）只可更新 frontmatter 的 `summary` 与五维字段，且以建议为先、动笔前说明；review 一律只出意见清单不改稿。`ai-draft` 章节不受此限，write 照旧。
 
 收稿循环（author-draft / co-write 的 author 章）：作者交稿 → review 出意见清单 → lore 按正文回填五本账（foreshadows / timeline / relations / memories / clue-board）并重建 index.yml → 主编向作者汇报本章伏笔/时间线/关系变动 → 大纲师出下一章章纲。
+
+Writing 六步法的第⑥步定稿维护是**原子动作**：章纲对照结论（共创模式）+ 五本账（memories / timeline / relations / foreshadows / clue-board）+ index.yml 重建 + 一致性核对一次跑完，全部落盘才算定稿（status 才置 `accepted`）；中途断了必须汇报缺口清单（列明哪几项未落盘）再续跑，不许带半套账定稿。
 
 使用约定：`novel/` 建议纳入 git——账本变动看 diff，lore 回填动了哪条一目了然；作者对某笔回填不认可，`git checkout` 对应文件即是回滚。
 
@@ -134,6 +138,6 @@ total: {chapters: 21, words: 65210, accepted: 18}
 - `maoying index` 是第 3 节重建逻辑的人工兜底（主编的日常路径是让 lore 角色直接重建）；
 - `maoying export [dir]` 导出全书为 md / txt / epub（默认 md；`--out` 改输出目录，缺省 `<dir>/exports/`）；
 - `maoying brief [dir] <chapter>` 组装单章写作卡（章纲 + 前章结尾 + 出场角色卡 + 活跃伏笔）；`--out <文件>` 落盘，缺省打到 stdout；
-- `maoying check [dir]` 静态体检（不调模型）：frontmatter 完整性、枚举值（含 phase）、章号卷号一致、伏笔章号引用、时间线年份、关系卡引用，并把本节 phase 完成判据落成静态检查——phase 到 outline 及之后仍缺主角卡/核心反派卡/世界观条目/分卷规划，或有两张及以上角色卡而 relations.yml 为空，即报 error（判据不满足回上一阶段补齐）。
+- `maoying check [dir]` 静态体检（不调模型）：frontmatter 完整性、枚举值（含 phase）、章号卷号一致、伏笔章号引用、伏笔超期未推进（planted 超 30 章无进展即 warn）、章纲钩子小节缺失、时间线年份、关系卡引用、AI 味统计（连续同式开头/比喻词密度/句长波动，命中即 warn），并把本节 phase 完成判据落成静态检查——phase 到 outline 及之后仍缺主角卡/核心反派卡/世界观条目/分卷规划，或有两张及以上角色卡而 relations.yml 为空，即报 error（判据不满足回上一阶段补齐）。
 
 六者都零依赖，解析器只认本规范的两类形态（平键映射、顶层数组）；深度嵌套不在支持范围——这是规范约束的执行手段之一。

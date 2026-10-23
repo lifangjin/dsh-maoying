@@ -59,13 +59,13 @@ The chief aligns the setting with you item by item (genre, golden finger, tone, 
 
 > Can we start chapter 3?
 
-The chief runs the continuity check, has the outliner produce the chapter outline (with the five narrative dimensions), and after your sign-off sends it to the writer, then the reviewer (checklist + four-dimension consistency scan); issues go back to the writer; once accepted, the lore keeper does finalization upkeep — you only call the shots at decision points.
+The chief runs the continuity check, has the outliner produce the chapter outline (with the five narrative dimensions), and after your sign-off sends it to the writer, then the reviewer (checklist + consistency scan: conflicts / timeline / foreshadowing / settings plus the six coherence dimensions — behavior / causality / resources / identity / injuries / combat power); issues go back to the writer; once passing, the lore keeper runs finalization upkeep as one atomic pass (outline cross-check + five ledgers + index rebuild + consistency sweep — accepted only when everything is on disk) — you only call the shots at decision points.
 
 **Consistency pass**:
 
 > Run a consistency check over the first 20 chapters.
 
-The chief advances the phase to consistency; the reviewer scans four dimensions — conflicts / timeline / foreshadowing / settings — and returns issues ranked by severity.
+The chief advances the phase to consistency; the reviewer scans conflicts / timeline / foreshadowing / settings plus the six coherence dimensions (behavior / causality / resources / identity / injuries / combat power) and returns issues ranked by severity.
 
 A reply of "ok / sure / go on" counts as confirmation; the chief advances directly without echoing it back.
 
@@ -89,7 +89,7 @@ The author-draft loop — you just write, hand it over, and the chores are taken
 
 After receiving a manuscript you get three things: a **review checklist** (issues only, no rewriting — applying them is up to you), a **ledger backfill** (foreshadowing / timeline / relations / memory / clue board recorded from what your text actually does, even off-plan changes, tagged `backfill`), and the **next chapter outline** (`novel/outlines/vXX-cXXX.md`, ready to write from).
 
-Companion commands: `maoying brief <dir> <chapter>` packs a per-chapter writing card (outline + previous ending + character cards + active foreshadowing — carry it to any editor or AI), and `maoying check <dir>` runs a zero-model static check (frontmatter completeness, foreshadow chapter references, timeline ordering, phase readiness gates — no model calls; LLM review goes through the chief).
+Companion commands: `maoying brief <dir> <chapter>` packs a per-chapter writing card (outline + previous ending + character cards + active foreshadowing — carry it to any editor or AI), and `maoying check <dir>` runs a zero-model static check (frontmatter completeness, foreshadow chapter refs & staleness, outline hook section, timeline ordering, AI-flavor stats (repeated openers / metaphor density / sentence-length flatness), phase readiness gates — no model calls; LLM review goes through the chief).
 
 ## Methodology Skills
 
@@ -124,7 +124,7 @@ maoying stats [dir]    # per-chapter CJK counts, status breakdown, current phase
 maoying index [dir]    # rebuild index.yml from volumes.yml + chapters/ (derived file)
 maoying export [dir]   # export the book: --format md|txt|epub (default md), --out <dir> to change destination
 maoying brief [dir] <chapter>  # pack a per-chapter writing card (outline + previous ending + character cards + active foreshadowing); --out to write to disk, stdout by default
-maoying check [dir]    # static check (no model calls): frontmatter / enums / chapter numbers / foreshadow refs / timeline years / relation-card refs / phase readiness gates
+maoying check [dir]    # static check (no model calls): frontmatter / enums / chapter numbers / foreshadow refs & staleness / outline hooks / AI-flavor stats / timeline years / relation-card refs / phase readiness gates
 ```
 
 Export examples:
