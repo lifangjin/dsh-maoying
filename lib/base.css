@@ -203,6 +203,38 @@ html[data-dsh-maoying-active]:not([data-dsh-mnemon-active]):not([data-dsh-taskbo
   font-weight: 600;
 }
 
+/* ── 设定 tab 内的子分区条（比主导航 tab 小一号）─────────────────────── */
+.myt-subTabs {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.myt-subTab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border: none;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--dsw-alias-label-secondary);
+  font: inherit;
+  font-size: 12.5px;
+  line-height: 18px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.myt-subTab:hover { background: var(--dsw-alias-interactive-bg-hover); color: var(--dsw-alias-label-primary); }
+.myt-subTab[data-active="true"] {
+  background: color-mix(in srgb, var(--dsw-alias-state-business-primary) 14%, transparent);
+  color: var(--dsw-alias-state-business-primary);
+  font-weight: 600;
+}
+.myt-subTab .myt-boardCount { line-height: 16px; }
+
 /* ── 卡片 / 栅格 ───────────────────────────────────────────────────────── */
 .myt-card {
   display: flex;
