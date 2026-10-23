@@ -43,14 +43,16 @@ const {
   readChapter,
   readOutlineFile,
   resolveNovelRoot,
+  mutateChapterBody,
   mutateChapterStatus,
   mutateForeshadowStatus,
+  mutateOutlineBody,
   mutatePhase,
   mutateProject,
   rebuildIndex,
   PanelError,
 } = await import('../lib/panel-core.mjs')
-const { FIVE_DIM_KEYS } = await import('../lib/novel-parse.mjs')
+const { FIVE_DIM_KEYS, sha256Hex } = await import('../lib/novel-parse.mjs')
 const { loadYamlLib } = await import('../lib/yaml-loader.mjs')
 
 /** 状态码断言助手：fn 必须抛出带指定 statusCode 的 PanelError。 */
@@ -589,6 +591,105 @@ test('readOutlineFile：章纲全文 { ok, file, words, body }；缺文件 404�
   assertFails(() => readOutlineFile(novel, 'scratch.md'), 422, '非章纲文件名')
   assertFails(() => readOutlineFile(novel, 'v01-c003.txt'), 422, '非章纲文件名')
   assertFails(() => readOutlineFile(novel, '../project.yml'), 403) // 穿越在 safeFileName 一刀切
+})
+
+test('readChapter：hash / outline.hash 等于各自文件原文 sha256（面板编辑保存的 base_hash 基线）', () => {
+  const root = makeTmpRoot()
+  const novel = buildSampleNovel(root)
+  const chapter = readChapter(novel, 'v01-c001.md', { yamlLib: null })
+  assert.equal(chapter.hash, sha256Hex(readFileSync(path.join(novel, 'chapters', 'v01-c001.md'), 'utf8')))
+  assert.equal(chapter.outline.hash, sha256Hex(readFileSync(path.join(novel, 'outlines', 'v01-c001.md'), 'utf8')))
+})
+
+test('mutateChapterBody：基线一致 → 围栏前逐字节保留、正文整段替换、返回写后新指纹', () => {
+  const root = makeTmpRoot()
+  const novel = buildSampleNovel(root)
+  const target = path.join(novel, 'chapters', 'v01-c001.md')
+  const before = readFileSync(target, 'utf8')
+  // 闭合围栏行（含其换行）是「围栏前原文」的终点——正文刀口从这之后开始
+  const fenceEnd = before.indexOf('\n---\n') + '\n---\n'.length
+  const baseline = sha256Hex(before)
+
+  const newBody = '全新正文第一段。\n\n全新正文第二段。'
+  const res = mutateChapterBody(novel, 'v01-c001.md', newBody, { baseHash: baseline })
+  const after = readFileSync(target, 'utf8')
+  assert.equal(res.ok, true)
+  assert.deepEqual(Object.keys(res), ['ok', 'hash'])
+  assert.equal(after.slice(0, fenceEnd), before.slice(0, fenceEnd), 'frontmatter 围栏（含闭合行）应逐字节保留')
+  assert.ok(after.endsWith('全新正文第二段。\n'), '正文应整段替换且末尾补换行')
+  assert.ok(!after.includes('雪下了三天'), '旧正文不应残留')
+  assert.equal(res.hash, sha256Hex(after), '返回 hash 应等于落盘原文指纹')
+
+  // 回读：readChapter 看到新正文，hash 与返回值一致
+  const reread = readChapter(novel, 'v01-c001.md', { yamlLib: null })
+  assert.ok(reread.body.includes('全新正文第二段'))
+  assert.equal(reread.hash, res.hash)
+
+  // 基线接写后新指纹连存：不该被自家 409 拦住（假冲突）
+  assert.equal(mutateChapterBody(novel, 'v01-c001.md', '二改正文。', { baseHash: res.hash }).ok, true)
+})
+
+test('mutateChapterBody：过期基线 409 不落盘；无围栏 422；body 非 string 422；缺省 baseHash 兼容', () => {
+  const root = makeTmpRoot()
+  const novel = buildSampleNovel(root)
+  const target = path.join(novel, 'chapters', 'v01-c001.md')
+  const before = readFileSync(target, 'utf8')
+  const baseline = sha256Hex(before)
+
+  // 模拟外部改动（状态流转）后旧基线过期：409 点名外部修改，全文逐字节未动
+  mutateChapterStatus(novel, 'v01-c001.md', 'writing')
+  const dirty = readFileSync(target, 'utf8')
+  assert.notEqual(dirty, before)
+  assertFails(() => mutateChapterBody(novel, 'v01-c001.md', '覆盖未遂', { baseHash: baseline }), 409, '外部修改')
+  assert.equal(readFileSync(target, 'utf8'), dirty, '409 拒写不得落盘')
+
+  // 无 frontmatter 围栏 → 422（先补齐再编辑）
+  writeFileSync(target, '没有围栏的裸正文\n', 'utf8')
+  assertFails(() => mutateChapterBody(novel, 'v01-c001.md', '正文'), 422, 'frontmatter 围栏')
+
+  // body 非 string 422；章节不存在 404；穿越 403
+  writeFileSync(target, before, 'utf8')
+  assertFails(() => mutateChapterBody(novel, 'v01-c001.md', 42), 422, 'body')
+  assertFails(() => mutateChapterBody(novel, 'nope.md', '正文'), 404)
+  assertFails(() => mutateChapterBody(novel, '../project.yml', '正文'), 403)
+
+  // 缺省 baseHash（旧调用方兼容）：跳过旧版检测直接写
+  assert.deepEqual(Object.keys(mutateChapterBody(novel, 'v01-c001.md', '无基线正文')), ['ok', 'hash'])
+  assert.ok(readFileSync(target, 'utf8').endsWith('无基线正文\n'))
+
+  // 基线大小写宽容：大写 hex 归一后视为同值
+  const upper = sha256Hex(readFileSync(target, 'utf8')).toUpperCase()
+  assert.equal(mutateChapterBody(novel, 'v01-c001.md', '大写基线正文', { baseHash: upper }).ok, true)
+})
+
+test('mutateOutlineBody：整文件替换；文件名或 stem 皆可；过期基线 409；穿越/坏 stem 拒；不存在 404', () => {
+  const root = makeTmpRoot()
+  const novel = buildSampleNovel(root)
+  const target = path.join(novel, 'outlines', 'v01-c001.md')
+  const baseline = sha256Hex(readFileSync(target, 'utf8'))
+
+  // 文件名形式（章节文件名 → 同 stem 章纲）
+  const res = mutateOutlineBody(novel, 'v01-c001.md', '重写后的章纲。', { baseHash: baseline })
+  assert.deepEqual(Object.keys(res), ['ok', 'hash'])
+  assert.equal(readFileSync(target, 'utf8'), '重写后的章纲。\n', '整文件替换，旧内容不残留')
+  assert.equal(res.hash, sha256Hex(readFileSync(target, 'utf8')), '返回 hash 应等于落盘原文指纹')
+
+  // stem 形式也行（调用方手里是章节上下文，不强迫换算）
+  assert.equal(mutateOutlineBody(novel, 'v01-c001', 'stem 形式也行。', { baseHash: res.hash }).ok, true)
+  assert.ok(readFileSync(target, 'utf8').includes('stem 形式也行'))
+
+  // 过期基线 409：全文逐字节未动
+  const staleBase = sha256Hex(readFileSync(target, 'utf8'))
+  writeFileSync(target, '外部改动\n', 'utf8')
+  assertFails(() => mutateOutlineBody(novel, 'v01-c001.md', '覆盖未遂', { baseHash: staleBase }), 409, '外部修改')
+  assert.equal(readFileSync(target, 'utf8'), '外部改动\n', '409 拒写不得落盘')
+
+  // 校验面：穿越 403、空 stem 422、不合 vXX-cXXX 422、body 非 string 422、章纲不存在 404
+  assertFails(() => mutateOutlineBody(novel, '../project.yml', 'x'), 403)
+  assertFails(() => mutateOutlineBody(novel, '.md', 'x'), 422)
+  assertFails(() => mutateOutlineBody(novel, 'scratch.md', 'x'), 422)
+  assertFails(() => mutateOutlineBody(novel, 'v01-c001.md', 42), 422, 'body')
+  assertFails(() => mutateOutlineBody(novel, 'v01-c099.md', 'x'), 404, '章纲不存在')
 })
 
 test('createChapterFromOutline：落盘 pending 空章（frontmatter 各键 + 标题「章纲」后缀剥离）；重复/非法拒', () => {

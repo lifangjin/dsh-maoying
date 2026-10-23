@@ -4,7 +4,7 @@
 
 ## 0. 定位与边界
 
-面板管**可视化与状态**，不管正文创作：小说内容由主编（agent）与作者在编辑器里写，面板负责「一眼看清全局 + 状态快捷流转」。v1 读全量、写少量（状态流转 + 索引重建）；正文编辑不做（那是编辑器和 agent 的活，面板里点「让主编改」提示语即可）。
+面板管**可视化、状态，以及作者本人的稿件编辑**：小说内容的生产仍归主编（agent）与作者在编辑器/共创流程里协作，面板负责「一眼看清全局 + 状态快捷流转」，同时给作者本人一个带护栏的正文/章纲编辑入口（textarea + 手动保存 + hash 旧版检测，见 §2 的 `chapter-save` / `outline-save`）。agent 的创作边界不变：共创模式下 agent 依旧不得碰 author 章节的正文（spec §作者稿圣域）——面板编辑是**人**用的刀，不是给 agent 开的新通道。
 
 ## 1. 包接线（单包形态，不建子包）
 
@@ -44,7 +44,7 @@ webServer.register({ kind: 'prefix', path: '/api/maoying', handler: async (req, 
 | `workspaces` | GET | — | `{ ok, workspaces: [{ path, name, hasNovel }] }`——workspaceRegistry.list() 逐根探测 `<root>/novel/project.yml` |
 | `state` | GET | `path=<root>` | 全量快照（见 §3 契约） |
 | `check` | GET | `path=<root>` | `{ ok, problems: [{ level, file, message }] }`——静态体检：与 CLI check 同源的 checkProject，读章节 frontmatter 原文（快照会把越枚举 status 归一成 pending，这里透出原始问题清单；level ∈ error/warn，可为空数组），概览「静态体检」黄条取数 |
-| `chapter` | GET | `path`, `file`（chapters/ 下文件名） | `{ ok, file, frontmatter, body, outline }`——正文全文 + 对应章纲（`{ file, words, body }`，outlines/ 无对应文件时 null），章节抽屉用 |
+| `chapter` | GET | `path`, `file`（chapters/ 下文件名） | `{ ok, file, frontmatter, body, hash, outline }`——正文全文 + 原文 sha256 指纹（正文编辑保存 `chapter-save` 的 `base_hash` 基线）+ 对应章纲（`{ file, words, body, hash }`，outlines/ 无对应文件时 null，hash 同为章纲编辑保存的基线），章节阅读页用 |
 | `outline` | GET | `path`, `file`（outlines/ 下 vXX-cXXX 命名的文件名） | `{ ok, file, words, body }`——章纲全文（章纲纯 markdown 无 frontmatter，body 即原文，words 为 CJK 计数），章节 tab 的章纲弹层用；非章纲文件名 422、章纲不存在 404 |
 | `style` | GET | `path=<root>` | `{ ok, found, text, hash, template }`——写作风格基准 novel/style.md 全文 + sha256 指纹（hash 为 style-save `base_hash` 的基线）；`found: false` = 文件尚未创建（常态非错误，text/hash 为 null，不回 404）；`template` 恒为插件内置默认基线（templates/novel/style.md）全文，读不到为 null（客户端据此禁用「用默认基线创建」） |
 | `chapter-status` | POST | `{ path, file, status }` | `{ ok }`——frontmatter status 行原地替换；status 必须 ∈ pending/writing/review/accepted |
@@ -53,9 +53,11 @@ webServer.register({ kind: 'prefix', path: '/api/maoying', handler: async (req, 
 | `phase` | POST | `{ path, phase }` | `{ ok }`——project.yml phase 行替换；七态枚举 |
 | `project-save` | POST | `{ path, values, base_hash? }`（values 为 8 平键 title/author/genre/length/language/phase/mode/description；base_hash 为表单载入时的 project.yml 指纹，即快照 `project_hash`） | `{ ok, project_hash }`——mutateProject 逐键改写保行尾注释、缺键按模板补齐；phase/mode 越枚举与空书名 422；base_hash 与写入前现读原文不一致 → 409「外部修改冲突」拒写不落盘（人工改动保护：表单载入后文件被作者/agent 改过即拒绝静默覆盖；缺省 base_hash 跳过检查，兼容旧调用方）。project_hash 为写后新指纹，客户端可作下一轮基线 |
 | `style-save` | POST | `{ path, text, base_hash? }`（text 为 style.md 全文；base_hash 为编辑器载入时的 style.md 指纹，即 `style` 路由的 `hash`） | `{ ok, hash }`——style.md 整文件覆写：纯 markdown 基准文档、无行级键位可言，整文件替换即最小手术（写前读、原子写，与 agent 的写法兼容）；text 非 string 422，空文本允许保存（空文件 = 无基准，agent 侧优雅降级）；base_hash 与写入前现读原文不一致 → 409「外部修改冲突」拒写不落盘（人工改动保护，与 project-save 同口径；文件不存在且带 base_hash 同样 409；缺省 base_hash 跳过检查 = 创建路径）。hash 为写后新指纹，客户端作下一轮基线 |
+| `chapter-save` | POST | `{ path, file, body, base_hash? }`（file 为 chapters/ 下文件名；body 为正文全文；base_hash 为进入编辑态时 `chapter` 路由的 `hash`） | `{ ok, hash }`——正文整段替换：frontmatter 围栏（含闭合行）之前逐字节保留、围栏后整段替换（正文是自由形态文本，无行级键位可手术，整段替换即最小干预，对 git diff 的扰动天然只落在正文段内）；body 非 string / 章节缺 frontmatter 围栏 422、章节不存在 404、穿越 403；正文末尾无换行补一个 `\n`；base_hash 与写入前现读原文不一致 → 409「章节文件已被外部修改…」拒写不落盘（人工改动保护，与 project-save 同口径；缺省 base_hash 跳过检查，兼容旧调用方）。hash 为写后新指纹，客户端作下一轮基线 |
+| `outline-save` | POST | `{ path, file, body, base_hash? }`（file 为章节文件名或 stem，目标恒为 outlines/ 下同 stem 章纲；body 为章纲全文；base_hash 为章纲载入时的指纹，即 `chapter` 路由的 `outline.hash`） | `{ ok, hash }`——章纲整文件替换：纯 markdown 无 frontmatter（spec §outlines），整文件替换即最小手术（与 style-save 同一判断）；body 非 string / stem 不合 vXX-cXXX 规范 422、章纲不存在 404（面板不新建章纲文件）、穿越 403；base_hash 检测同上 → 409「章纲文件已被外部修改…」拒写不落盘。hash 为写后新指纹，客户端作下一轮基线 |
 | `rebuild-index` | POST | `{ path }` | `{ ok, chapters }`——照 CLI index 同一逻辑重建 index.yml |
 
-共 17 条。写操作全部「行级原地替换」：只在 frontmatter/目标 yml 的对应行上做字符串手术，写前读、写后校验（替换计数 ≠1 即 409 拒写并报错），不做整文件重排——把对 git diff 的扰动压到最小，也与 agent 的写法兼容。（`self-update` 是例外：它不碰小说文件，跑的是 pnpm 安装；`chapter-create` 是另一例外：它从章纲落一个全新章节文件，不动任何既有文件的字节；`style-save` 亦是例外：style.md 是纯 markdown 基准文档、无行级键位可言，整文件覆写就是它的最小手术，写前读、原子写。）
+共 19 条。写操作全部「行级原地替换」：只在 frontmatter/目标 yml 的对应行上做字符串手术，写前读、写后校验（替换计数 ≠1 即 409 拒写并报错），不做整文件重排——把对 git diff 的扰动压到最小，也与 agent 的写法兼容。（`self-update` 是例外：它不碰小说文件，跑的是 pnpm 安装；`chapter-create` 是另一例外：它从章纲落一个全新章节文件，不动任何既有文件的字节；`style-save` 亦是例外：style.md 是纯 markdown 基准文档、无行级键位可言，整文件覆写就是它的最小手术，写前读、原子写；`chapter-save` 亦是例外：正文是自由形态文本，写原语是「frontmatter 围栏定位 + 围栏后整段替换」，围栏（含闭合行）之前逐字节保留；`outline-save` 同理：章纲纯 markdown，整文件替换。）
 
 ### host-debug 端点（现场诊断）
 
@@ -114,7 +116,7 @@ webServer.register({ kind: 'prefix', path: '/api/maoying', handler: async (req, 
 九个 tab（顺序即默认排布）：
 
 1. **概览**：project 卡（书名大字 + 类型/篇幅/语言 pills + 阶段徽章 + 简介，卡右上「编辑」按钮展开书稿元信息表单——原「小说设置」tab 并入，见 §4.1「小说设置并入概览」条目）；统计卡（总字数/章节数/状态分布条）；最近更新（chapters 按 mtime 前 5）；warnings 黄条；静态体检黄条（check 路由问题清单，见 §4.1「人工改动保护 + 静态体检黄条」（0.1.14）条目）。
-2. **章节**：表格（卷-章/标题/状态徽章/字数/梗概），状态筛选 pills；表格上方「按单写作」区块——有章纲且 status=pending 的章按序列出（章纲节选 + 状态徽章），未建章的孤儿章纲照列（「未建章」徽章 + 「建章」一键：POST chapter-create 落 pending 空章并重拉快照；行点击开章纲全文弹层，0.1.15 起），共创模式的主工作清单；行点击开整页阅读视图（0.1.12 起替代原右侧抽屉——fixed 侧弹层会被 DSH 侧边栏遮挡）：返回按钮 + GET chapter 正文（只读，等宽滚动）+ 章纲对照栏（左右分栏或折叠段）+ 复制文件路径按钮 + 五维字段卡 + 状态流转按钮（当前态 → 下一态一键，pending→writing→review→accepted）。
+2. **章节**：表格（卷-章/标题/状态徽章/字数/梗概），状态筛选 pills；表格上方「按单写作」区块——有章纲且 status=pending 的章按序列出（章纲节选 + 状态徽章），未建章的孤儿章纲照列（「未建章」徽章 + 「建章」一键：POST chapter-create 落 pending 空章并重拉快照；行点击开章纲全文弹层，0.1.15 起），共创模式的主工作清单；行点击开整页阅读视图（0.1.12 起替代原右侧抽屉——fixed 侧弹层会被 DSH 侧边栏遮挡）：返回按钮 + GET chapter 正文 + 章纲对照栏（左右分栏或折叠段）+ 复制文件路径按钮 + 五维字段卡 + 状态流转按钮（当前态 → 下一态一键，pending→writing→review→accepted）；正文与章纲对照栏均可就地编辑保存（textarea + 手动保存，POST chapter-save / outline-save 携 base_hash 409 人工改动检测——frontmatter 围栏逐字节保留，外部改动拒写并放回磁盘最新内容，0.1.19 起）。
 3. **角色**：卡墙（姓名/role 徽章四色/年龄性别/性格一句/动机一行），点击看全卡（含 arc/markers/background）。
 4. **伏笔**：四列看板（埋设/推进/已回收/弃用），卡片含 priority 色点（high 红/normal 灰/low 淡）、`source: backfill` 的「回填」小徽章（账本回填来的条目，区别于写前规划）、埋设章→预期回收章、notes 全文直显（0.1.10 去掉两行截断）；卡片按钮：推进到下一状态（planted→progressing→resolved；abandoned 只能从看板拖不动、按钮给「弃用」）。列头计数。
 5. **关系图**：canvas 力导向图——节点=角色（radius 随出场无关、固定 18px，名字 label 下方），边=relations（intensity 1-5 → 线宽 1-4px，type 标在边中点 hover 显示 description）；拖拽节点、空白处滚轮缩放、双击复位；intensity 缺省 3。角色多于 30 个时只画与 relations 相连的节点，其余进「未入图」列表。
@@ -130,7 +132,7 @@ webServer.register({ kind: 'prefix', path: '/api/maoying', handler: async (req, 
 - **MaskPortal**：抽屉/弹层统一 portal 到 `document.body`——面板容器挂在宿主会话中栏，中栏 transform/overflow 会把 `position: fixed` 劫持成相对自身并连同裁剪（桌面端「点了没反应」实测病灶）；无 createPortal 的老宿主退回原地渲染。
 - **顶栏版本区**：当前版本号常驻；`update-check` 路由（模仿 dsh-paoding：npm registry → npmmirror → GitHub 三级源，1h 缓存 + 7 天 stale-if-error，全败静默）发现新版时亮「有新版 ↗」徽章。
 - **系统设置**：齿轮弹窗，字号六档（100/110/120/130/140/150%）——面板根与 portal 节点读同一 `--myt-zoom` 变量整体 zoom，localStorage 记忆。
-- **界面语言**：系统设置可选中文/English——全部 UI 文案走 `I18N` 词典（zh/en 各 211 条，`tt`/`tf` 取词 + `{x}` 插值，zh 值与历史硬编码逐字一致保证中文界面零回归），切换立即生效整树重渲并 localStorage 记忆；语言自称（中文/日本語）与侧栏入口品牌名不翻译。
+- **界面语言**：系统设置可选中文/English——全部 UI 文案走 `I18N` 词典（zh/en 各 258 条，`tt`/`tf` 取词 + `{x}` 插值，zh 值与历史硬编码逐字一致保证中文界面零回归），切换立即生效整树重渲并 localStorage 记忆；语言自称（中文/日本語）与侧栏入口品牌名不翻译。
 - **Markdown 渲染**：零依赖渲染器（先整体转义再变换），章纲对照与世界观/科学设定描述不再裸显 md 源码；正文手稿仍走 pre。
 - **章节整页阅读**：替代右侧抽屉（侧边栏遮挡问题），返回按钮 + 章纲对照 + 五维 + 状态流转原位保留；阅读态隐藏 tab 条。
 - **小说设置 tab**（第 9 个）：project.yml 平键表单化编辑，`POST project-save` → `mutateProject` 逐键改写保行尾注释、缺键按模板补齐、phase/mode 越枚举与空书名 422。
@@ -145,6 +147,7 @@ webServer.register({ kind: 'prefix', path: '/api/maoying', handler: async (req, 
 - **概览补显共创模式**（0.1.18）：书稿卡阶段行 phase pill 后补「共创模式」短标签徽章（悬浮出全称；快照 mode 缺失或越枚举时不显示，老项目无该键不误标）。路由不变；I18N zh/en 各 238 → 241 条（modeShort.aiDraft / coWrite / authorDraft）。
 - **一键升级顺带全局 CLI**（0.1.18）：本机常见两份独立安装——desktop profile（`<dshHome>/profiles/desktop/node_modules/dsh-maoying`，一键升级的更新对象）与全局 CLI（`npm i -g` 装的 `<npm 全局>/node_modules/dsh-maoying`，如 `/opt/homebrew/bin/maoying` → `/opt/homebrew/lib/node_modules/dsh-maoying/bin/maoying.mjs`）——只更 profile 会版本偏斜；方案 B：profile 阶段落定（installed 装完 / up-to-date 短路）后跑独立全局阶段，把两份收敛到同一精确版本。**检测**（detectGlobalCli，零 spawn 纯文件系统）：PATH 各目录 + `/opt/homebrew/bin` + `/usr/local/bin` 找 `maoying`（win32 `maoying.cmd`），existsSync 预筛；命中后 realpathSync 该 bin 两级上溯得包根（`bin/maoying.mjs` → 包根），包根 package.json 的 name 必须是 `dsh-maoying` 才认（防怪链接）；包根 realpath 落在本 profile 目录内（如 profile 自带 `.bin/maoying`）→ 不算全局，跳过该候选继续找；全落空 → 不 spawn。**更新**走 npm 候选链（与 pnpm 链同款 spawn ENOENT 探测）：裸 npm → execPath 同目录 → `/opt/homebrew/bin` → `/usr/local/bin` → `/opt/homebrew/opt/node@XX/bin`，spawn `npm i -g dsh-maoying@<target>`（cwd=os.tmpdir()、独立 120s 超时，profile pnpm 仍 180s）。**返回形状**：成功对象新增 `globalCli` 字段——`{ ok: true, skipped: 'missing' }`（没装全局，跳过）/ `{ ok: true, skipped: 'same', version }`（已同版）/ `{ ok: true, from, to }` / `{ ok: false, error, output? }`（error 中文、含手动出路 `npm i -g dsh-maoying@<target>`）——**全局失败不拖累 profile 安装**：整体仍 ok:true，重启照常生效，失败如实透出；dev-link / unsupported-layout / no-target / profile-missing 等失败路径维持整单拒绝，不碰全局。路由把 globalCli 原样透传（up-to-date 与 installed 两个成功分支）。前端成功 toast 主文案不变、按 globalCli 拼第二句（missing / same 不提零噪音，真更新了显「全局 maoying CLI a → b」，失败如实报错），up-to-date 分支同样拼接，toast 文本容器加 `white-space: pre-line` 承接换行；self-update 请求前端超时 200s → 340s（180 + 120 + 40 余量）。路由不变；I18N zh/en 各 241 → 243 条（toast.selfUpdate.globalOk / globalFail）。
 - **写作风格 tab**（0.1.19，未发版）：novel/style.md 写作风格基准（0.1.18 落的数据文件与四角色加载纪律）在面板有了入口——设定与索引板之间新增「写作风格」tab：视图态 MdView 渲染全文，卡头「编辑」进整文件编辑态（textarea + 取消/保存；保存 POST `style-save` 携 base_hash，409 人工改动保护链路照 ProjectMetaForm——成功接写后新指纹防连续保存假冲突，409 重拉磁盘真值把编辑器原地重置、停留编辑态让用户自行取舍）；文件缺失时空态卡「用默认基线创建」——插件模板（templates/novel/style.md）预填编辑态、保存即创建（模板读不到时按钮禁用）；空文本允许保存（空文件 = 无基准，agent 侧优雅降级），挂载/换工作区按需拉取 GET `style`（请求序号防过期响应）。路由 15 → 17 条（style GET / style-save POST）；I18N zh/en 各 243 → 250 条（tabs.style / style.note / style.editTip / style.empty / style.createFromTpl / style.loadFailed / toast.styleSaved）；九个 tab。
+- **正文/章纲面板编辑**（0.1.19，未发版）：作者本人直接在面板写章节正文与章纲——章节阅读页「编辑」进正文编辑态（textarea + 取消/保存，无自动保存），章纲对照栏卡头「编辑」进章纲编辑态；保存 POST `chapter-save` / `outline-save`：正文写原语是「frontmatter 围栏定位 + 围栏后整段替换」（正文自由形态无行级键位可手术，围栏含闭合行之前逐字节保留），章纲纯 markdown 整文件替换；`GET chapter` 出参补顶层 hash 与 outline.hash（保存响应接写后新指纹作下一轮基线，防连续保存假冲突），base_hash 与写入前现读不一致 → 409 拒写不落盘（人工改动保护链路照 StyleTab：草稿丢弃、重拉磁盘真值放回编辑器，正文末尾无换行自动补齐；缺围栏/坏 stem 422、章纲不存在 404——面板不新建章纲文件、穿越 403）；切章自动退出编辑态清草稿，防 A 章文字写进 B 章。路由 17 → 19 条（chapter-save / outline-save POST）；I18N zh/en 各 250 → 258 条（reader.edit / reader.editTip / reader.save / reader.bodyEditHint / outline.editTip / outline.editHint / toast.chapterSaved / toast.outlineSaved）；顶栏副标题与 README 的「只读正文」边界声明同步改写（spec §作者稿圣域不变——面板编辑是给人用的刀，agent 的圣域规则原样）。
 
 ## 5. 验收基线
 

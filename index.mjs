@@ -65,8 +65,10 @@ import { fileURLToPath } from 'node:url'
 import {
   createChapterFromOutline,
   listWorkspaces,
+  mutateChapterBody,
   mutateChapterStatus,
   mutateForeshadowStatus,
+  mutateOutlineBody,
   mutatePhase,
   mutateProject,
   parseStateSnapshot,
@@ -944,7 +946,7 @@ export async function registerPrefixRouteWithRetry(webServer, route, { attempts 
 }
 
 /**
- * 注册创作台全部路由（docs/creator-panel.md §2 的 17 条）。返回宿主 disposer；
+ * 注册创作台全部路由（docs/creator-panel.md §2 的 19 条）。返回宿主 disposer；
  * webServer 缺席（非 web 部署）时抛错，由 apply 侧统一降级为 warn。
  */
 export async function registerCreatorRoutes(ctx) {
@@ -1104,7 +1106,8 @@ export async function registerCreatorRoutes(ctx) {
         if (route === 'chapter' && req.method === 'GET') {
           // 章节正文全文（抽屉用）：file 只认 chapters/ 下纯文件名；响应组装
           // 直传 readChapter 结果（五期起含对应章纲 outline 字段，无章纲为
-          // null），照 §2 契约 { ok, file, frontmatter, body, outline }。
+          // null；0.1.19 起顶层与 outline 各带原文 hash——正文/章纲编辑保存
+          // 的 base_hash 基线），照 §2 契约 { ok, file, frontmatter, body, hash, outline }。
           const novelDir = resolveNovelRoot(url.searchParams.get('path'), ctx.workspaceRegistry)
           json(res, 200, readChapter(novelDir, url.searchParams.get('file')))
           return
@@ -1176,6 +1179,28 @@ export async function registerCreatorRoutes(ctx) {
           const body = await readBody(req, res)
           const novelDir = resolveNovelRoot(body.path, ctx.workspaceRegistry)
           json(res, 200, saveStyleText(novelDir, body.text, { baseHash: body.base_hash }))
+          return
+        }
+
+        if (route === 'chapter-save' && req.method === 'POST') {
+          // 章节正文保存（0.1.19，面板章节阅读页编辑态）：frontmatter 围栏
+          // （含）之前逐字节保留、围栏后整段替换（正文是自由形态文本，无行级
+          // 键位可手术）；base_hash 过期 → 409 拒写（人工改动保护，与
+          // project-save 同口径）；body 非 string / 缺围栏 422、章节缺 404。
+          const body = await readBody(req, res)
+          const novelDir = resolveNovelRoot(body.path, ctx.workspaceRegistry)
+          json(res, 200, mutateChapterBody(novelDir, body.file, body.body, { baseHash: body.base_hash }))
+          return
+        }
+
+        if (route === 'outline-save' && req.method === 'POST') {
+          // 章纲保存（0.1.19，章节阅读页章纲对照栏编辑态）：章纲纯 markdown
+          // 无 frontmatter，整文件替换；file 认章节文件名或 stem，目标恒为
+          // outlines/<stem>.md（不存在 404，v1 不做面板新建章纲）；base_hash
+          // 检测同上；stem 不合 vXX-cXXX 规范 422。
+          const body = await readBody(req, res)
+          const novelDir = resolveNovelRoot(body.path, ctx.workspaceRegistry)
+          json(res, 200, mutateOutlineBody(novelDir, body.file, body.body, { baseHash: body.base_hash }))
           return
         }
 

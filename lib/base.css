@@ -424,6 +424,59 @@ html[data-dsh-maoying-active]:not([data-dsh-mnemon-active]):not([data-dsh-taskbo
 .myt-dimLabel { font-size: 11px; line-height: 16px; color: var(--dsw-alias-label-tertiary); margin-bottom: 2px; }
 .myt-dimText { font-size: 12px; line-height: 18px; color: var(--dsw-alias-label-secondary); overflow-wrap: anywhere; }
 
+/* ── 0.1.19：正文/章纲面板编辑态（textarea + 手动保存）────────────────────
+   与只读态的区分要一眼可辨：全宽等宽 textarea + 主题色边框强调；只读态是
+   无边框淡底的 pre（.myt-chapterBody）与 MdView。 */
+.myt-bodyEdit { display: flex; flex-direction: column; gap: 8px; }
+.myt-chapterEditArea {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 12px;
+  border: 1px solid color-mix(in srgb, var(--dsw-alias-state-business-primary) 45%, transparent);
+  border-radius: 10px;
+  background: var(--dsw-alias-bg-layer-1, var(--dsw-alias-bg-layer-2));
+  color: var(--dsw-alias-label-primary);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 13px;
+  line-height: 1.7;
+  resize: vertical;
+  min-height: 320px;
+}
+.myt-editHint { font-size: 11px; line-height: 16px; color: var(--dsw-alias-label-tertiary); }
+.myt-outlineEditBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 0 6px;
+  border-radius: 6px;
+  color: var(--dsw-alias-state-business-primary);
+  font-size: 11px;
+  line-height: 18px;
+  cursor: pointer;
+  user-select: none;
+}
+.myt-outlineEditBtn:hover { background: var(--dsw-alias-interactive-bg-hover); }
+.myt-outlineEdit {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px 12px;
+  border-top: 1px solid color-mix(in srgb, var(--dsw-alias-state-business-primary) 18%, transparent);
+}
+.myt-outlineArea {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 10px;
+  border: 1px solid color-mix(in srgb, var(--dsw-alias-state-business-primary) 45%, transparent);
+  border-radius: 8px;
+  background: var(--dsw-alias-bg-layer-1, var(--dsw-alias-bg-layer-2));
+  color: var(--dsw-alias-label-primary);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.6;
+  resize: vertical;
+}
+
 /* ── 五期：章纲对照栏（章节抽屉）──────────────────────────────────────────
    与正文视觉区分：主题色左边线 + 淡主题色底，深色随令牌自动跟随。 */
 .myt-outlinePanel {

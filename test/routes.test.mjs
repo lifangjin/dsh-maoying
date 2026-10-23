@@ -9,6 +9,8 @@
  * 读取、chapter-create 从章纲建章、404、413（响应体可达：先回包后断开）、
  * 迭代路由接线（project-save 改键与越枚举 422、
  * style 读全文/缺失与 style-save 创建/覆写/409/422、
+ * chapter-save 正文保存与 outline-save 章纲保存（hash 基线一致 200 /
+ * 过期 409 不落盘 / 路径与文件名校验拒）、
  * update-check 响应形状、host-debug 五级探针与脱敏、非法 JSON body 400），
  * 以及 registerPrefixRouteWithRetry 的重试语义（同步抛与 rejected promise
  * 两条路）和 apply() 末尾「路由注册失败只 warn」的降级路径。
@@ -544,6 +546,87 @@ test('style-save：创建/覆写落盘逐字节一致；base_hash 正确 200 且
 
   // path 围栏
   const foreign = await post({ path: '/etc', text: '# x\n' })
+  assert.equal(foreign.status, 403)
+})
+
+test('chapter-save：围栏保留正文替换 200 带新指纹；过期 base_hash 409 不落盘；路径/围栏校验拒', async () => {
+  const env = makeEnv()
+  const handler = await registeredHandler(env)
+  const chapterPath = path.join(env.root, 'novel', 'chapters', 'v01-c001.md')
+  const post = (body) => call(handler, { method: 'POST', url: '/api/maoying/chapter-save', headers: LOOPBACK, body })
+  // 基线从 GET chapter 拿（与面板客户端同一路径）
+  const got = await call(handler, { url: `/api/maoying/chapter?path=${encodeURIComponent(env.root)}&file=v01-c001.md`, headers: LOOPBACK })
+  assert.equal(got.status, 200)
+  const detail = JSON.parse(got.raw)
+  assert.match(detail.hash, /^[0-9a-f]{64}$/, 'chapter 出参应带原文 sha256（hex 小写）')
+  const before = readFileSync(chapterPath, 'utf8')
+  const fenceEnd = before.indexOf('\n---\n') + '\n---\n'.length
+
+  // 200：围栏前逐字节保留、正文替换、响应带写后新指纹
+  const okRes = await post({ path: env.root, file: 'v01-c001.md', body: '面板新正文。', base_hash: detail.hash })
+  assert.equal(okRes.status, 200)
+  const okBody = JSON.parse(okRes.raw)
+  assert.equal(okBody.ok, true)
+  const after = readFileSync(chapterPath, 'utf8')
+  assert.equal(after.slice(0, fenceEnd), before.slice(0, fenceEnd), 'frontmatter 围栏（含闭合行）应逐字节保留')
+  assert.ok(after.endsWith('面板新正文。\n'), '正文应整段替换且末尾补换行')
+  assert.match(okBody.hash, /^[0-9a-f]{64}$/)
+  assert.equal(okBody.hash, createHash('sha256').update(after, 'utf8').digest('hex'))
+
+  // 过期 base_hash → 409 拒写不落盘
+  const stale = await post({ path: env.root, file: 'v01-c001.md', body: '覆盖未遂。', base_hash: detail.hash })
+  assert.equal(stale.status, 409)
+  const staleBody = JSON.parse(stale.raw)
+  assert.equal(staleBody.ok, false)
+  assert.ok(staleBody.error.includes('外部修改'), `错误应点名外部修改：${staleBody.error}`)
+  assert.equal(readFileSync(chapterPath, 'utf8'), after, '409 拒写不得落盘')
+
+  // file 带路径分隔符 → 403（safeFileName 一刀切）
+  const evil = await post({ path: env.root, file: '../project.yml', body: 'x' })
+  assert.equal(evil.status, 403)
+
+  // 非白名单 path → 403
+  const foreign = await post({ path: '/etc', file: 'v01-c001.md', body: 'x' })
+  assert.equal(foreign.status, 403)
+})
+
+test('outline-save：整文件替换 200 带新指纹；过期 base_hash 409 不落盘；坏 file 拒；非白名单 path 403', async () => {
+  const env = makeEnv()
+  const handler = await registeredHandler(env)
+  const outlinePath = path.join(env.root, 'novel', 'outlines', 'v01-c001.md')
+  const post = (body) => call(handler, { method: 'POST', url: '/api/maoying/outline-save', headers: LOOPBACK, body })
+  const baseline = createHash('sha256').update(readFileSync(outlinePath, 'utf8'), 'utf8').digest('hex')
+
+  // file 传章节文件名（服务端换算同 stem 章纲，与客户端传章节 file 的用法一致）
+  const okRes = await post({ path: env.root, file: 'v01-c001.md', body: '重写章纲。', base_hash: baseline })
+  assert.equal(okRes.status, 200)
+  const okBody = JSON.parse(okRes.raw)
+  assert.equal(okBody.ok, true)
+  const after = readFileSync(outlinePath, 'utf8')
+  assert.equal(after, '重写章纲。\n', '章纲纯 markdown，整文件替换')
+  assert.match(okBody.hash, /^[0-9a-f]{64}$/)
+  assert.equal(okBody.hash, createHash('sha256').update(after, 'utf8').digest('hex'))
+
+  // stem 形式（v01-c001）与文件名形式等价
+  const stemRes = await post({ path: env.root, file: 'v01-c001', body: 'stem 形式。', base_hash: okBody.hash })
+  assert.equal(stemRes.status, 200)
+  assert.ok(readFileSync(outlinePath, 'utf8').includes('stem 形式'))
+
+  // 过期 base_hash → 409 拒写不落盘
+  writeFileSync(outlinePath, '外部改动\n', 'utf8')
+  const stale = await post({ path: env.root, file: 'v01-c001.md', body: '覆盖未遂。', base_hash: okBody.hash })
+  assert.equal(stale.status, 409)
+  assert.ok(JSON.parse(stale.raw).error.includes('外部修改'))
+  assert.equal(readFileSync(outlinePath, 'utf8'), '外部改动\n', '409 拒写不得落盘')
+
+  // file 带路径分隔符 → 403；非章纲 stem → 422
+  const evil = await post({ path: env.root, file: '../../etc/passwd', body: 'x' })
+  assert.equal(evil.status, 403)
+  const badStem = await post({ path: env.root, file: 'scratch.md', body: 'x' })
+  assert.equal(badStem.status, 422)
+
+  // 非白名单 path → 403
+  const foreign = await post({ path: '/etc', file: 'v01-c001.md', body: 'x' })
   assert.equal(foreign.status, 403)
 })
 
