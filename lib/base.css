@@ -675,6 +675,17 @@ html[data-dsh-maoying-active]:not([data-dsh-mnemon-active]):not([data-dsh-taskbo
 .myt-modalHead { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 16px; border-bottom: 1px solid var(--dsw-alias-border-l1); }
 .myt-modalTitle { margin: 0; min-width: 0; font-size: 14px; line-height: 20px; font-weight: 600; color: var(--dsw-alias-label-primary); overflow-wrap: anywhere; }
 .myt-modalBody { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: 14px 16px; display: flex; flex-direction: column; gap: 10px; }
+/* ── 受管文件写面（0.2.x）：源文件编辑/新建/删除确认三弹层 ────────────────
+   srcCard 比 modalCard 宽一档：整文件 textarea 是主角，宽度优先给代码文本。 */
+.myt-srcCard { width: min(760px, 100%); }
+.myt-srcRel { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 11px; line-height: 16px; color: var(--dsw-alias-label-tertiary); overflow-wrap: anywhere; }
+.myt-srcHint { font-size: 11px; line-height: 16px; }
+.myt-srcArea { min-height: 46vh; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; line-height: 1.6; }
+.myt-itemActions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 2px; }
+.myt-itemActions .myt-btn { padding: 2px 8px; font-size: 11px; line-height: 16px; }
+.myt-confirmCard { width: min(460px, 100%); }
+.myt-confirmText { font-size: 12px; line-height: 19px; color: var(--dsw-alias-label-secondary); overflow-wrap: anywhere; white-space: pre-wrap; }
+.myt-outlineDelBtn { color: var(--dsw-alias-state-error-primary); }
 .myt-kvRow { display: flex; gap: 10px; font-size: 12px; line-height: 18px; }
 .myt-kvKey { flex: none; width: 64px; color: var(--dsw-alias-label-tertiary); }
 .myt-kvVal { min-width: 0; color: var(--dsw-alias-label-secondary); overflow-wrap: anywhere; white-space: pre-wrap; }

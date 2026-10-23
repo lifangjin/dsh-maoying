@@ -64,6 +64,8 @@ import { fileURLToPath } from 'node:url'
 
 import {
   createChapterFromOutline,
+  createManagedFile,
+  deleteManagedFile,
   listWorkspaces,
   mutateChapterBody,
   mutateChapterStatus,
@@ -73,10 +75,12 @@ import {
   mutateProject,
   parseStateSnapshot,
   readChapter,
+  readManagedFile,
   readOutlineFile,
   readStyleState,
   rebuildIndex,
   resolveNovelRoot,
+  saveManagedFile,
   saveStyleText,
 } from './lib/panel-core.mjs'
 // 静态体检（check 路由）与 CLI check 同源：直接复用 novel-parse 的检查器。
@@ -946,7 +950,7 @@ export async function registerPrefixRouteWithRetry(webServer, route, { attempts 
 }
 
 /**
- * 注册创作台全部路由（docs/creator-panel.md §2 的 19 条）。返回宿主 disposer；
+ * 注册创作台全部路由（docs/creator-panel.md §2 的 23 条）。返回宿主 disposer；
  * webServer 缺席（非 web 部署）时抛错，由 apply 侧统一降级为 warn。
  */
 export async function registerCreatorRoutes(ctx) {
@@ -1201,6 +1205,43 @@ export async function registerCreatorRoutes(ctx) {
           const body = await readBody(req, res)
           const novelDir = resolveNovelRoot(body.path, ctx.workspaceRegistry)
           json(res, 200, mutateOutlineBody(novelDir, body.file, body.body, { baseHash: body.base_hash }))
+          return
+        }
+
+        if (route === 'file-source' && req.method === 'GET') {
+          // 受管文件读（0.2.x「全量可编辑写面」，四条通用路由之一）：rel 白
+          // 名单校验 + 结构口径在 panel-core（managedRelCheck / readManagedFile），
+          // 路由只做围栏与分发。hash 为原文指纹——编辑态保存的 base_hash 基线。
+          const novelDir = resolveNovelRoot(url.searchParams.get('path'), ctx.workspaceRegistry)
+          json(res, 200, readManagedFile(novelDir, url.searchParams.get('rel')))
+          return
+        }
+
+        if (route === 'file-save' && req.method === 'POST') {
+          // 受管文件存：整文件覆写 + 保存时结构校验（解析失败/缺围栏 422）+
+          // base_hash 过期 409（人工改动保护，与 project-save 同口径文案）。
+          const body = await readBody(req, res)
+          const novelDir = resolveNovelRoot(body.path, ctx.workspaceRegistry)
+          json(res, 200, saveManagedFile(novelDir, body.rel, body.text, { baseHash: body.base_hash }))
+          return
+        }
+
+        if (route === 'file-create' && req.method === 'POST') {
+          // 受管文件建：已存在 409（绝不覆盖），结构校验同存（新角色卡/新章
+          // 纲由客户端模板预填，服务端只验形状）。
+          const body = await readBody(req, res)
+          const novelDir = resolveNovelRoot(body.path, ctx.workspaceRegistry)
+          json(res, 200, createManagedFile(novelDir, body.rel, body.text))
+          return
+        }
+
+        if (route === 'file-delete' && req.method === 'POST') {
+          // 受管文件删：不可逆，服务端不做二次确认（UI 层强制确认弹层）；
+          // 白名单最严——账本 yml / md 实体卡 / outlines 之外只有 chapters/
+          // 的删除（正文编辑走 chapter-save，通用存不开放防绕过状态机语义）。
+          const body = await readBody(req, res)
+          const novelDir = resolveNovelRoot(body.path, ctx.workspaceRegistry)
+          json(res, 200, deleteManagedFile(novelDir, body.rel))
           return
         }
 

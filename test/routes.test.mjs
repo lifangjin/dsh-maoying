@@ -7,6 +7,9 @@
  * 校验 / trustedHosts）、state 契约字段、chapter-status 流转与防穿越、
  * foreshadow-status、phase、rebuild-index、chapter 读取、outline 章纲全文
  * 读取、chapter-create 从章纲建章、404、413（响应体可达：先回包后断开）、
+ * file-source 读受管原文带指纹（404 / 白名单外 403）、file-save /
+ * file-create / file-delete 受管写三态（账本 yml / 实体卡 md 白名单、
+ * chapters 仅删、index.yml 有意排除、过期基线 409 / 结构 422 / 404）、
  * 迭代路由接线（project-save 改键与越枚举 422、
  * style 读全文/缺失与 style-save 创建/覆写/409/422、
  * chapter-save 正文保存与 outline-save 章纲保存（hash 基线一致 200 /
@@ -20,7 +23,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
 import { EventEmitter } from 'node:events'
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -628,6 +631,81 @@ test('outline-save：整文件替换 200 带新指纹；过期 base_hash 409 不
   // 非白名单 path → 403
   const foreign = await post({ path: '/etc', file: 'v01-c001.md', body: 'x' })
   assert.equal(foreign.status, 403)
+})
+
+test('file-source：读账本/实体卡原文+指纹（hash=原文 sha256）；缺文件 404；白名单外 403', async () => {
+  const env = makeEnv()
+  const handler = await registeredHandler(env)
+  const get = (rel, p2) => call(handler, {
+    url: `/api/maoying/file-source?path=${encodeURIComponent(p2 || env.root)}&rel=${encodeURIComponent(rel)}`,
+    headers: LOOPBACK,
+  })
+
+  // 账本 yml：原文逐字节 + 指纹（读与指纹同刻同源，作 file-save 基线）
+  const ok = await get('relations.yml')
+  assert.equal(ok.status, 200)
+  const body = JSON.parse(ok.raw)
+  const rawLedger = readFileSync(path.join(env.root, 'novel', 'relations.yml'), 'utf8')
+  assert.equal(body.ok, true)
+  assert.equal(body.rel, 'relations.yml')
+  assert.equal(body.text, rawLedger)
+  assert.equal(body.hash, createHash('sha256').update(rawLedger, 'utf8').digest('hex'))
+
+  // 实体卡 md：原文带围栏；缺文件 404；白名单外（index.yml 有意排除）403
+  const md = await get('characters/lin-waner.md')
+  assert.equal(md.status, 200)
+  assert.ok(JSON.parse(md.raw).text.includes('---'), '实体卡原文应带 frontmatter 围栏')
+  assert.equal((await get('characters/ghost.md')).status, 404)
+  assert.equal((await get('index.yml')).status, 403)
+
+  // 非白名单 path → 403
+  assert.equal((await get('relations.yml', '/etc')).status, 403)
+})
+
+test('file-save / file-create / file-delete：受管写三态（200/409/422/403/404，save 用干净账本内容）', async () => {
+  const env = makeEnv()
+  const handler = await registeredHandler(env)
+  const post = (route, body) => call(handler, { method: 'POST', url: `/api/maoying/${route}`, headers: LOOPBACK, body })
+  const ledgerPath = path.join(env.root, 'novel', 'timeline.yml')
+
+  // save：干净条目内容 + 正确基线 → 200 带写后指纹与 rel，落盘逐字节一致
+  const baseline = createHash('sha256').update(readFileSync(ledgerPath, 'utf8'), 'utf8').digest('hex')
+  const text = '- year: 玄历四年春\n  title: 冰河解冻\n  importance: 3\n'
+  const saved = await post('file-save', { path: env.root, rel: 'timeline.yml', text, base_hash: baseline })
+  assert.equal(saved.status, 200)
+  const savedBody = JSON.parse(saved.raw)
+  assert.equal(savedBody.ok, true)
+  assert.equal(savedBody.rel, 'timeline.yml')
+  assert.equal(readFileSync(ledgerPath, 'utf8'), text)
+  assert.equal(savedBody.hash, createHash('sha256').update(text, 'utf8').digest('hex'))
+
+  // save：过期基线 → 409 拒写不落盘（文案与 project-save 同口径）
+  writeFileSync(ledgerPath, '- year: 外改\n', 'utf8')
+  const stale = await post('file-save', { path: env.root, rel: 'timeline.yml', text: '- year: 覆盖未遂\n', base_hash: savedBody.hash })
+  assert.equal(stale.status, 409)
+  assert.ok(JSON.parse(stale.raw).error.includes('外部修改'))
+  assert.equal(readFileSync(ledgerPath, 'utf8'), '- year: 外改\n', '409 拒写不得落盘')
+
+  // save：结构 422（顶层非数组）；chapters 通用存 403（只删）；index.yml 有意排除 403
+  assert.equal((await post('file-save', { path: env.root, rel: 'timeline.yml', text: 'title: x' })).status, 422)
+  assert.equal((await post('file-save', { path: env.root, rel: 'chapters/v01-c001.md', text: '# x\n' })).status, 403)
+  assert.equal((await post('file-save', { path: env.root, rel: 'index.yml', text: 'x: 1\n' })).status, 403)
+
+  // create：新实体卡 200 落盘；已存在 409 不覆盖
+  const tpl = '---\nname: 新角\nrole: supporting\n---\n\n'
+  const created = await post('file-create', { path: env.root, rel: 'characters/new-girl.md', text: tpl })
+  assert.equal(created.status, 200)
+  assert.equal(JSON.parse(created.raw).rel, 'characters/new-girl.md')
+  assert.ok(existsSync(path.join(env.root, 'novel', 'characters', 'new-girl.md')))
+  assert.equal((await post('file-create', { path: env.root, rel: 'characters/new-girl.md', text: tpl })).status, 409)
+
+  // delete：删章 200；重复删 404；path 围栏 403
+  const del = await post('file-delete', { path: env.root, rel: 'chapters/v01-c001.md' })
+  assert.equal(del.status, 200)
+  assert.equal(JSON.parse(del.raw).ok, true)
+  assert.equal(existsSync(path.join(env.root, 'novel', 'chapters', 'v01-c001.md')), false)
+  assert.equal((await post('file-delete', { path: env.root, rel: 'chapters/v01-c001.md' })).status, 404)
+  assert.equal((await post('file-delete', { path: '/etc', rel: 'chapters/v01-c001.md' })).status, 403)
 })
 
 test('check：status 越枚举章节透出 error 级问题；非白名单 path 403', async () => {

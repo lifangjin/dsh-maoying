@@ -20,6 +20,7 @@
 - **frontmatter 用 `---` 围栏**，键值一行一个、简单标量；正文（body）在第二个 `---` 之后。frontmatter 键名用英文（工具安全），值用中文。
 - **枚举一律全称**，见速查版「总原则」一节；新增枚举值属于规范变更，须同步本文与主编人设。
 - **index.yml 是派生文件**，任何手工改动都会被 `maoying index` 或 lore 角色覆盖。
+- **人工可编辑写面（创作台面板）**：除派生的 index.yml 外全部数据文件人工可改——面板 file-* 通道对六个账本 yml（relations/timeline/memories/clue-board/foreshadows/volumes）、characters/world/science/research 实体卡 md、outlines、chapters 的删除开放整文件编辑。护栏是三道：保存时结构校验（账本须解析为条目数组且条目全平键、md 实体卡须带成对围栏，否则 422 拒存——「存得进、快照读不出」的条目一律不收）+ 保存后 `check` 静态体检标语义问题 + git 回滚兜底。语义规则（状态机、必填章号等）是 agent 纪律不是人工禁区；`project.yml` 的 `phase` 推进权仍只在主编。
 - 章节文件名 `v<卷号2位>-c<章号3位>.md`；frontmatter 的 `volume`/`num` 与文件名一致（CLI 与 index 重建以文件名为主键，frontmatter 为辅）。
 
 ## 2. 逐文件规范

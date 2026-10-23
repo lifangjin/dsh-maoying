@@ -4,7 +4,7 @@
 
 ## 0. 定位与边界
 
-面板管**可视化、状态，以及作者本人的稿件编辑**：小说内容的生产仍归主编（agent）与作者在编辑器/共创流程里协作，面板负责「一眼看清全局 + 状态快捷流转」，同时给作者本人一个带护栏的正文/章纲编辑入口（textarea + 手动保存 + hash 旧版检测，见 §2 的 `chapter-save` / `outline-save`）。agent 的创作边界不变：共创模式下 agent 依旧不得碰 author 章节的正文（spec §作者稿圣域）——面板编辑是**人**用的刀，不是给 agent 开的新通道。
+面板管**可视化、状态，以及作者本人的稿件编辑**：小说内容的生产仍归主编（agent）与作者在编辑器/共创流程里协作，面板负责「一眼看清全局 + 状态快捷流转」，同时给作者本人一个带护栏的正文/章纲编辑入口（textarea + 手动保存 + hash 旧版检测，见 §2 的 `chapter-save` / `outline-save`）。0.2.x 起（§4.1「全量可编辑写面」）六本账本 yml、四目录实体卡 md 与章纲新建也开放人工编辑，编辑纪律统一为「保存时结构校验（解析失败/缺围栏 422 拒存）+ 保存后语义体检（`check`）+ git 回滚兜底」——语义规则（状态机、必填章号等）是 agent 纪律不是人工禁区，但写面只服务人。agent 的创作边界不变：共创模式下 agent 依旧不得碰 author 章节的正文（spec §作者稿圣域）——面板编辑是**人**用的刀，不是给 agent 开的新通道。
 
 ## 1. 包接线（单包形态，不建子包）
 
@@ -54,10 +54,25 @@ webServer.register({ kind: 'prefix', path: '/api/maoying', handler: async (req, 
 | `project-save` | POST | `{ path, values, base_hash? }`（values 为 8 平键 title/author/genre/length/language/phase/mode/description；base_hash 为表单载入时的 project.yml 指纹，即快照 `project_hash`） | `{ ok, project_hash }`——mutateProject 逐键改写保行尾注释、缺键按模板补齐；phase/mode 越枚举与空书名 422；base_hash 与写入前现读原文不一致 → 409「外部修改冲突」拒写不落盘（人工改动保护：表单载入后文件被作者/agent 改过即拒绝静默覆盖；缺省 base_hash 跳过检查，兼容旧调用方）。project_hash 为写后新指纹，客户端可作下一轮基线 |
 | `style-save` | POST | `{ path, text, base_hash? }`（text 为 style.md 全文；base_hash 为编辑器载入时的 style.md 指纹，即 `style` 路由的 `hash`） | `{ ok, hash }`——style.md 整文件覆写：纯 markdown 基准文档、无行级键位可言，整文件替换即最小手术（写前读、原子写，与 agent 的写法兼容）；text 非 string 422，空文本允许保存（空文件 = 无基准，agent 侧优雅降级）；base_hash 与写入前现读原文不一致 → 409「外部修改冲突」拒写不落盘（人工改动保护，与 project-save 同口径；文件不存在且带 base_hash 同样 409；缺省 base_hash 跳过检查 = 创建路径）。hash 为写后新指纹，客户端作下一轮基线 |
 | `chapter-save` | POST | `{ path, file, body, base_hash? }`（file 为 chapters/ 下文件名；body 为正文全文；base_hash 为进入编辑态时 `chapter` 路由的 `hash`） | `{ ok, hash }`——正文整段替换：frontmatter 围栏（含闭合行）之前逐字节保留、围栏后整段替换（正文是自由形态文本，无行级键位可手术，整段替换即最小干预，对 git diff 的扰动天然只落在正文段内）；body 非 string / 章节缺 frontmatter 围栏 422、章节不存在 404、穿越 403；正文末尾无换行补一个 `\n`；base_hash 与写入前现读原文不一致 → 409「章节文件已被外部修改…」拒写不落盘（人工改动保护，与 project-save 同口径；缺省 base_hash 跳过检查，兼容旧调用方）。hash 为写后新指纹，客户端作下一轮基线 |
-| `outline-save` | POST | `{ path, file, body, base_hash? }`（file 为章节文件名或 stem，目标恒为 outlines/ 下同 stem 章纲；body 为章纲全文；base_hash 为章纲载入时的指纹，即 `chapter` 路由的 `outline.hash`） | `{ ok, hash }`——章纲整文件替换：纯 markdown 无 frontmatter（spec §outlines），整文件替换即最小手术（与 style-save 同一判断）；body 非 string / stem 不合 vXX-cXXX 规范 422、章纲不存在 404（面板不新建章纲文件）、穿越 403；base_hash 检测同上 → 409「章纲文件已被外部修改…」拒写不落盘。hash 为写后新指纹，客户端作下一轮基线 |
+| `outline-save` | POST | `{ path, file, body, base_hash? }`（file 为章节文件名或 stem，目标恒为 outlines/ 下同 stem 章纲；body 为章纲全文；base_hash 为章纲载入时的指纹，即 `chapter` 路由的 `outline.hash`） | `{ ok, hash }`——章纲整文件替换：纯 markdown 无 frontmatter（spec §outlines），整文件替换即最小手术（与 style-save 同一判断）；body 非 string / stem 不合 vXX-cXXX 规范 422、章纲不存在 404（本路由只覆写不新建，新建走 `file-create`）、穿越 403；base_hash 检测同上 → 409「章纲文件已被外部修改…」拒写不落盘。hash 为写后新指纹，客户端作下一轮基线 |
+| `file-source` | GET | `path`, `rel`（受管白名单内的相对路径，见下表） | `{ ok, rel, text, hash }`——受管文件全文 + 原文 sha256 指纹（hash 为 `file-save` 的 `base_hash` 基线，读与指纹同刻同源）；不存在 404、白名单外/穿越 403 |
+| `file-save` | POST | `{ path, rel, text, base_hash? }`（text 为文件全文；base_hash 为编辑器载入时 `file-source` 的 `hash`） | `{ ok, rel, hash }`——受管文件整文件覆写：text 非 string 422、结构校验（`validateManagedText`：账本 yml 须解析为条目数组且条目全平键、md 实体卡须带成对围栏；校验先于基线检查）422、文件不存在 404（新建走 `file-create`）、base_hash 过期 → 409「`{rel}` 已被外部修改，请刷新后基于最新内容重改再存」拒写不落盘；尾无换行补一个 `\n`。hash 为写后新指纹 |
+| `file-create` | POST | `{ path, rel, text }` | `{ ok, rel, hash }`——新建受管文件（新角色/设定/科学设定卡、新章纲骨架由客户端模板预填）：已存在 409 先到先建绝不覆盖、结构校验同 `file-save`、目录缺席自动创建 |
+| `file-delete` | POST | `{ path, rel }` | `{ ok, rel }`——删除受管文件（含 `chapters/` 章节文件——这是它唯一的通用写通道）；不存在 404；服务端不做二次确认，UI 层强制确认弹层 |
 | `rebuild-index` | POST | `{ path }` | `{ ok, chapters }`——照 CLI index 同一逻辑重建 index.yml |
 
-共 19 条。写操作全部「行级原地替换」：只在 frontmatter/目标 yml 的对应行上做字符串手术，写前读、写后校验（替换计数 ≠1 即 409 拒写并报错），不做整文件重排——把对 git diff 的扰动压到最小，也与 agent 的写法兼容。（`self-update` 是例外：它不碰小说文件，跑的是 pnpm 安装；`chapter-create` 是另一例外：它从章纲落一个全新章节文件，不动任何既有文件的字节；`style-save` 亦是例外：style.md 是纯 markdown 基准文档、无行级键位可言，整文件覆写就是它的最小手术，写前读、原子写；`chapter-save` 亦是例外：正文是自由形态文本，写原语是「frontmatter 围栏定位 + 围栏后整段替换」，围栏（含闭合行）之前逐字节保留；`outline-save` 同理：章纲纯 markdown，整文件替换。）
+### 受管文件白名单（file-* 四路由共用 `managedRelCheck`）
+
+| rel | kind | 读 | 存 | 建 | 删 |
+|---|---|---|---|---|---|
+| `relations.yml` / `timeline.yml` / `memories.yml` / `clue-board.yml` / `foreshadows.yml` / `volumes.yml` | yml | ✓ | ✓ | — | — |
+| `characters/<slug>.md` / `world/<slug>.md` / `science/<slug>.md` / `research/<slug>.md`（slug=`^[a-z0-9][a-z0-9-]*$`） | md | ✓ | ✓ | ✓ | ✓ |
+| `outlines/<stem>.md`（stem 复用 chapterSortKey 的 vXX-cXXX） | outline | ✓ | ✓ | ✓（章纲新建） | ✓ |
+| `chapters/<vXX-cXXX>.md` | chapter | —（走 `chapter`） | —（走 `chapter-save`） | —（走 `chapter-create`） | ✓ 仅删 |
+
+校验顺序：rel 形状（反斜杠/深层 403、slug/stem 422）→ 白名单外 403（`index.yml` / `project.yml` / `novel/style.md` 有意排除——前两者是核心配置走专用路由，style 有专用 tab）→ resolve 包含双保险（越界 403）。
+
+共 23 条。写操作全部「行级原地替换」：只在 frontmatter/目标 yml 的对应行上做字符串手术，写前读、写后校验（替换计数 ≠1 即 409 拒写并报错），不做整文件重排——把对 git diff 的扰动压到最小，也与 agent 的写法兼容。（`self-update` 是例外：它不碰小说文件，跑的是 pnpm 安装；`chapter-create` 是另一例外：它从章纲落一个全新章节文件，不动任何既有文件的字节；`style-save` 亦是例外：style.md 是纯 markdown 基准文档、无行级键位可言，整文件覆写就是它的最小手术，写前读、原子写；`chapter-save` 亦是例外：正文是自由形态文本，写原语是「frontmatter 围栏定位 + 围栏后整段替换」，围栏（含闭合行）之前逐字节保留；`outline-save` 同理：章纲纯 markdown，整文件替换。0.2.x 的 `file-save` / `file-create` 是最后一批例外：受管账本 yml 与实体卡 md 由人工整文件改写，结构校验（`validateManagedText`）守住「存得进、快照读得出」的形状底线，语义问题交保存后的 `check` 与 git 回滚兜底。）
 
 ### host-debug 端点（现场诊断）
 
@@ -115,15 +130,15 @@ webServer.register({ kind: 'prefix', path: '/api/maoying', handler: async (req, 
 
 九个 tab（顺序即默认排布）：
 
-1. **概览**：project 卡（书名大字 + 类型/篇幅/语言 pills + 阶段徽章 + 简介，卡右上「编辑」按钮展开书稿元信息表单——原「小说设置」tab 并入，见 §4.1「小说设置并入概览」条目）；统计卡（总字数/章节数/状态分布条）；最近更新（chapters 按 mtime 前 5）；warnings 黄条；静态体检黄条（check 路由问题清单，见 §4.1「人工改动保护 + 静态体检黄条」（0.1.14）条目）。
-2. **章节**：表格（卷-章/标题/状态徽章/字数/梗概），状态筛选 pills；表格上方「按单写作」区块——有章纲且 status=pending 的章按序列出（章纲节选 + 状态徽章），未建章的孤儿章纲照列（「未建章」徽章 + 「建章」一键：POST chapter-create 落 pending 空章并重拉快照；行点击开章纲全文弹层，0.1.15 起），共创模式的主工作清单；行点击开整页阅读视图（0.1.12 起替代原右侧抽屉——fixed 侧弹层会被 DSH 侧边栏遮挡）：返回按钮 + GET chapter 正文 + 章纲对照栏（左右分栏或折叠段）+ 复制文件路径按钮 + 五维字段卡 + 状态流转按钮（当前态 → 下一态一键，pending→writing→review→accepted）；正文与章纲对照栏均可就地编辑保存（textarea + 手动保存，POST chapter-save / outline-save 携 base_hash 409 人工改动检测——frontmatter 围栏逐字节保留，外部改动拒写并放回磁盘最新内容，0.1.19 起）。
-3. **角色**：卡墙（姓名/role 徽章四色/年龄性别/性格一句/动机一行），点击看全卡（含 arc/markers/background）。
-4. **伏笔**：四列看板（埋设/推进/已回收/弃用），卡片含 priority 色点（high 红/normal 灰/low 淡）、`source: backfill` 的「回填」小徽章（账本回填来的条目，区别于写前规划）、埋设章→预期回收章、notes 全文直显（0.1.10 去掉两行截断）；卡片按钮：推进到下一状态（planted→progressing→resolved；abandoned 只能从看板拖不动、按钮给「弃用」）。列头计数。
-5. **关系图**：canvas 力导向图——节点=角色（radius 随出场无关、固定 18px，名字 label 下方），边=relations（intensity 1-5 → 线宽 1-4px，type 标在边中点 hover 显示 description）；节点按角色配色（0.1.20 起）：主角 #f53f3f 红 / 配角 #165dff 蓝 / 反派 #1d2129 黑 / 龙套与未标注 #fadc19 黄（查表 miss 落 minor，全节点恒有色），拖拽固定态统一加粗描边；脚注带四色图例；拖拽节点、空白处滚轮缩放、双击复位；右上角 ＋/－ 缩放按钮（钳制同滚轮 0.4-2.5）与全屏按钮（Fullscreen API 能力检测，不支持则不渲染；进入全屏走 ResizeObserver 自动重铺）；intensity 缺省 3。角色多于 30 个时只画与 relations 相连的节点，其余进「未入图」列表。防重叠（0.1.20 起）：节点最小间距 62 硬碰撞分离（含名字 label 纵向净空，力式斥力之上兜底，弹簧 rest 120→130 配合多留缝隙）；边为二次曲线——按两侧空旷度选朝向（迟滞防抖）绕开途中节点，同一对角色的重复边偏移放大 + 交替朝向互相分开（type 标签随曲线移到 t=0.5 点）；hover 命中按曲线几何采样。
-6. **时间线**：垂直轴，importance 1-5 → 点大小/颜色深浅，year 左列右卡片。
-7. **设定**：子 tab 三分区切换（世界观/科学设定/资料检索，各带条目计数，仅渲染当前激活分区）——world 内多分类时二级子 tab 按 category 切换（每 tab 带条目计数，仅渲染激活分类；单分类/无分类平铺直出，见 §4.1「世界观分类二级子 tab」条目）；science 三色标签（known 绿/extrapolation 黄/hypothesis 紫，标签下 references 链接列表）；research 逐条渲染，空态也常驻可切。
+1. **概览**：project 卡（书名大字 + 类型/篇幅/语言 pills + 阶段徽章 + 简介，卡右上「编辑」按钮展开书稿元信息表单——原「小说设置」tab 并入，见 §4.1「小说设置并入概览」条目）；统计卡（总字数/章节数/状态分布条）；最近更新（chapters 按 mtime 前 5）；warnings 黄条；静态体检黄条（check 路由问题清单，见 §4.1「人工改动保护 + 静态体检黄条」（0.1.14）条目）；分卷规划卡卡头「编辑源文件」（volumes.yml 整文件编辑弹层，0.2.x 写面）。
+2. **章节**：表格（卷-章/标题/状态徽章/字数/梗概），状态筛选 pills；表格上方「按单写作」区块——有章纲且 status=pending 的章按序列出（章纲节选 + 状态徽章），未建章的孤儿章纲照列（「未建章」徽章 + 「建章」一键：POST chapter-create 落 pending 空章并重拉快照；行点击开章纲全文弹层，0.1.15 起），共创模式的主工作清单；行点击开整页阅读视图（0.1.12 起替代原右侧抽屉——fixed 侧弹层会被 DSH 侧边栏遮挡）：返回按钮 + GET chapter 正文 + 章纲对照栏（左右分栏或折叠段）+ 复制文件路径按钮 + 五维字段卡 + 状态流转按钮（当前态 → 下一态一键，pending→writing→review→accepted）；正文与章纲对照栏均可就地编辑保存（textarea + 手动保存，POST chapter-save / outline-save 携 base_hash 409 人工改动检测——frontmatter 围栏逐字节保留，外部改动拒写并放回磁盘最新内容，0.1.19 起）；0.2.x 写面：无章纲空态加「新建章纲」（outlines/<stem>.md 五件骨架预填）、章纲对照栏卡头「删除章纲」、阅读顶栏「删除章节」——后两者均确认弹层（不可逆，后悔靠 git，check 会标孤儿引用）。
+3. **角色**：卡墙（姓名/role 徽章四色/年龄性别/性格一句/动机一行），点击看全卡（含 arc/markers/background）；0.2.x 写面：墙头「新建角色」（模板预填）+ 全卡弹层底部「编辑源文件/删除文件」。
+4. **伏笔**：四列看板（埋设/推进/已回收/弃用），卡片含 priority 色点（high 红/normal 灰/low 淡）、`source: backfill` 的「回填」小徽章（账本回填来的条目，区别于写前规划）、埋设章→预期回收章、notes 全文直显（0.1.10 去掉两行截断）；卡片按钮：推进到下一状态（planted→progressing→resolved；abandoned 只能从看板拖不动、按钮给「弃用」）。列头计数；0.2.x 写面：卡头「编辑源文件」（foreshadows.yml）。
+5. **关系图**：canvas 力导向图——节点=角色（radius 随出场无关、固定 18px，名字 label 下方），边=relations（intensity 1-5 → 线宽 1-4px，type 标在边中点 hover 显示 description）；节点按角色配色（0.1.20 起）：主角 #f53f3f 红 / 配角 #165dff 蓝 / 反派 #1d2129 黑 / 龙套与未标注 #fadc19 黄（查表 miss 落 minor，全节点恒有色），拖拽固定态统一加粗描边；脚注带四色图例；拖拽节点、空白处滚轮缩放、双击复位；右上角 ＋/－ 缩放按钮（钳制同滚轮 0.4-2.5）与全屏按钮（Fullscreen API 能力检测，不支持则不渲染；进入全屏走 ResizeObserver 自动重铺）；intensity 缺省 3。角色多于 30 个时只画与 relations 相连的节点，其余进「未入图」列表。防重叠（0.1.20 起）：节点最小间距 62 硬碰撞分离（含名字 label 纵向净空，力式斥力之上兜底，弹簧 rest 120→130 配合多留缝隙）；边为二次曲线——按两侧空旷度选朝向（迟滞防抖）绕开途中节点，同一对角色的重复边偏移放大 + 交替朝向互相分开（type 标签随曲线移到 t=0.5 点）；hover 命中按曲线几何采样。0.2.x 写面：卡头「编辑源文件」（relations.yml，空态同样给入口）。
+6. **时间线**：垂直轴，importance 1-5 → 点大小/颜色深浅，year 左列右卡片；0.2.x 写面：卡头「编辑源文件」（timeline.yml，空态同样给入口——账本空不等于不可编辑）。
+7. **设定**：子 tab 三分区切换（世界观/科学设定/资料检索，各带条目计数，仅渲染当前激活分区）——world 内多分类时二级子 tab 按 category 切换（每 tab 带条目计数，仅渲染激活分类；单分类/无分类平铺直出，见 §4.1「世界观分类二级子 tab」条目）；science 三色标签（known 绿/extrapolation 黄/hypothesis 紫，标签下 references 链接列表）；research 逐条渲染，空态也常驻可切；0.2.x 写面：world/science 组头「新建设定」（模板预填）+ 条目卡「编辑源文件/删除文件」，research 暂无写面入口（快照有卡，入口下轮再议）。
 8. **写作风格**：novel/style.md 写作风格基准的查看与编辑——视图态 MdView 渲染全文，卡头「编辑」进整文件编辑态（textarea + 取消/保存，保存 POST style-save 携 base_hash 409 人工改动保护，写后新指纹接下一轮基线）；文件缺失时显示空态卡，可用插件内置默认基线一键预填创建（保存即落盘），空文本允许保存。
-9. **索引板**：clues 按 kind 分组（线索/红鲱鱼/推理/疑问，resolved 划线置灰）+ memories 按 category 分组（promise 类高亮）。
+9. **索引板**：clues 按 kind 分组（线索/红鲱鱼/推理/疑问，resolved 划线置灰）+ memories 按 category 分组（promise 类高亮）；0.2.x 写面：两卡头「编辑源文件」（clue-board.yml / memories.yml）。
 
 状态徽章色（全局统一）：pending 灰 / writing 蓝 / review 橙 / accepted 绿；phase 七态沿用七色 pill。文案全中文、禁 emoji 图标（用 ui-primitives 图标或纯 CSS）。
 
@@ -154,6 +169,7 @@ webServer.register({ kind: 'prefix', path: '/api/maoying', handler: async (req, 
 - **关系图防重叠**（0.1.20 待发）：canvas 力导向图三处——①硬碰撞分离：step() 速度积分之后按最小间距 62（两节点半径 18×2 + 名字 label 纵向净空）做两轮位置级互推（固定/拖拽节点不动推对方、双固定跳过，位移不写回速度靠阻尼收敛），弹簧 rest 120→130 配合多留缝隙，节点永不压叠；②边改二次贝塞尔曲线：控制点垂直偏移随边长缩放钳 [12,28]，draw 每帧按曲线两侧对无关节点的最小距离（9 点采样）比空旷度选朝向、另一侧明显更空（+12 世界像素）才翻转（side 挂边对象上迟滞防抖），同一对角色的重复边按 (a,b) 分组序号放大偏移并交替朝向互相分开，type 标签移到曲线 t=0.5 点；③hover 命中检测跟曲线几何走（二次贝塞尔 9 段折线近似，阈值仍 10 世界像素，edgeCtrl 与 draw 同源）。纯前端，路由不变；I18N 不变。注：边完全零交叉在数学上不总成立（非平面图），本改动目标是消除节点压叠、线穿节点、重复边重合与常见交叠，不保证零交叉。
 - **关系图工具角标**（0.1.19）：关系图右上角新增工具条——＋/－ 缩放按钮（步进 ×1.25 / ÷1.25，钳制与滚轮同口径 0.4-2.5；React 按钮够不着绘图 effect 闭包里的 sim，经 zoomApiRef 桥调用，effect 清理时置 null 防旧闭包误触）与全屏切换按钮（Fullscreen API 能力检测——wrap 有 requestFullscreen/webkitRequestFullscreen 且 document.fullscreenEnabled 非假才渲染，否则不占位；监听 fullscreenchange/webkitfullscreenchange 同步「全屏/退出全屏」文案，浏览器 ESC 退出也跟上；进/出全屏 wrap 尺寸变化走既有 ResizeObserver 自动 resize 重铺 canvas，Chromium UA 全屏样式覆盖 480px 定高）。纯前端，路由不变；I18N zh/en 各 260 → 264 条（relations.zoomIn / zoomOut / fs / exitFs），relations.help 文案同步更新（提缩放按钮与右上角全屏）。
 - **世界观分类二级子 tab**（0.1.20 待发）：设定 tab 世界观条目分区内部再进一层——原纵向分组列表（myt-listHead 分组头 + myt-worldGroup 堆叠）在 world 条目按 category（frontmatter 自由文本，缺省「未分类」）聚出**多个**分类时改为二级子 tab 条（复用 myt-subTabs/myt-subTab + myt-subTabsInner 修饰：字号/padding 收一号），每 tab 带条目计数、仅渲染激活分类的条目（条目 markup 不变）；单分类或全部未分类时平铺直出，不出 tab 条也不出分组头，world 为空维持空态。激活分类记忆在组件 state（切走再切回不丢），快照重拉后所存分类已不存在时回落第一个。category 是数据文件自由文本，分组容器保持 Object.create(null) 防原型污染。纯前端，路由不变；I18N zh/en 各 264 → 265 条（world.catTabsAria）。
+- **全量可编辑写面（0.2.x 待发）**：面板剩余只读内容开放为人工可编辑——①路由 19 → 23 条：`file-source`（GET 原文+指纹）/`file-save`（POST 整文件覆写，base_hash 409 + 结构校验 422）/`file-create`（新建，已存在 409）/`file-delete`（删除，服务端不二次确认），四条共用 `managedRelCheck` 白名单（§2 受管文件白名单表）：六个账本 yml 读/存、四个 md 实体目录读/存/建/删（slug=`^[a-z0-9][a-z0-9-]*$`）、outlines 读/存/建/删、chapters 仅删；`index.yml`/`project.yml`/`novel/style.md` 有意排除（各走专用路由/弹层）。②结构校验 `validateManagedText`：账本 yml 须解析为顶层数组且条目全为平键对象（快照会静默丢弃 null/裸标量/数组条/空对象条——存得进读不出等于丢数据，存时一并 422）；md 实体卡只验围栏成对；回退解析与真 yaml 解析两条路同一结论（测试双口径断言）。③UI 九处入口：角色墙头「新建角色」+ 全卡弹层「编辑源文件/删除文件」；world/science 组头「新建设定」（模板预填 `---\ncategory: 地点\n---` / `---\nlabel: known\n---`）+ 条目卡编辑/删除；伏笔/关系图/时间线/索引板两卡卡头「编辑源文件」（时间线/关系图空态也给入口）；概览分卷卡头「编辑源文件」（volumes.yml）；章节阅读页无章纲空态「新建章纲」（五件骨架预填）+ 阅读顶栏「删除章节」+ 章纲卡头「删除章纲」（删除均确认弹层，文案点名不可逆、后悔靠 git、check 会标孤儿引用）。共用三弹层组件（SourceEditorModal 带请求序号防过期响应 / CreateFileModal slug 客户端预校 / ConfirmModal 在途禁双击）。research 快照有卡但 v1 无写面入口。I18N zh/en 各 265 → 294 条（src.* 20 + toast.fileSaved/fileCreated/fileDeleted + reader.createOutline/deleteChapter + outline.deleteBtn + char.createBtn + world.createBtn/createScienceBtn）。测试：panel-core 层 6 例（白名单矩阵/结构校验双口径/读存建删）+ 路由层 2 例（file-source、三态全链路）。
 
 ## 5. 验收基线
 

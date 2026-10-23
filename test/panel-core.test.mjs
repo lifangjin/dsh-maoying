@@ -50,6 +50,12 @@ const {
   mutatePhase,
   mutateProject,
   rebuildIndex,
+  managedRelCheck,
+  validateManagedText,
+  readManagedFile,
+  saveManagedFile,
+  createManagedFile,
+  deleteManagedFile,
   PanelError,
 } = await import('../lib/panel-core.mjs')
 const { FIVE_DIM_KEYS, sha256Hex } = await import('../lib/novel-parse.mjs')
@@ -825,4 +831,141 @@ test('生产默认路径：不传 options 时从 DSH_HOME 惰性借 yaml 包，r
   mkdirSync(path.join(root2, 'novel'), { recursive: true })
   writeFileSync(path.join(root2, 'novel', 'project.yml'), 'title: 差异断言\ndescription: {nested: 数据规范禁深嵌套}\n', 'utf8')
   assert.equal(parseStateSnapshot(path.join(root2, 'novel')).project.description, null)
+})
+
+// ── 受管文件写面（0.2.x「全量可编辑写面」）：白名单 / 结构校验 / 读存建删 ──────
+
+test('managedRelCheck：白名单矩阵——六个账本 yml、四个 md 目录 slug、outlines 章纲、chapters 仅删', () => {
+  // 允许形态与 kind 归类
+  assert.deepEqual(managedRelCheck('relations.yml', 'save'), { dir: '', name: 'relations.yml', kind: 'yml' })
+  assert.deepEqual(managedRelCheck('clue-board.yml', 'read'), { dir: '', name: 'clue-board.yml', kind: 'yml' })
+  assert.deepEqual(managedRelCheck('volumes.yml', 'save'), { dir: '', name: 'volumes.yml', kind: 'yml' })
+  assert.deepEqual(managedRelCheck('characters/lin-waner.md', 'read'), { dir: 'characters', name: 'lin-waner.md', kind: 'md' })
+  assert.deepEqual(managedRelCheck('world/new-place.md', 'create'), { dir: 'world', name: 'new-place.md', kind: 'md' })
+  assert.deepEqual(managedRelCheck('science/lab-note.md', 'save'), { dir: 'science', name: 'lab-note.md', kind: 'md' })
+  assert.deepEqual(managedRelCheck('research/deep-dive.md', 'delete'), { dir: 'research', name: 'deep-dive.md', kind: 'md' })
+  assert.deepEqual(managedRelCheck('outlines/v01-c001.md', 'save'), { dir: 'outlines', name: 'v01-c001.md', kind: 'outline' })
+  assert.deepEqual(managedRelCheck('chapters/v01-c001.md', 'delete'), { dir: 'chapters', name: 'v01-c001.md', kind: 'chapter' })
+})
+
+test('managedRelCheck：白名单外与形状违规逐一拒（403/422 分明，形状先于白名单）', () => {
+  // chapters 只删：save / read / create 全 403（正文读写各有专用路由）
+  assertFails(() => managedRelCheck('chapters/v01-c001.md', 'save'), 403, '只开放删除')
+  assertFails(() => managedRelCheck('chapters/v01-c001.md', 'read'), 403, '只开放删除')
+  assertFails(() => managedRelCheck('chapters/v01-c001.md', 'create'), 403, '只开放删除')
+  // 有意排除的核心配置（面板永不直改）
+  assertFails(() => managedRelCheck('index.yml', 'save'), 403, '白名单')
+  assertFails(() => managedRelCheck('project.yml', 'save'), 403, '白名单')
+  assertFails(() => managedRelCheck('Big.md', 'save'), 403, '白名单')
+  // 穿越 / 绝对路径 / 反斜杠 / 深层嵌套
+  assertFails(() => managedRelCheck('../project.yml', 'save'), 403, '白名单')
+  assertFails(() => managedRelCheck('/etc/hosts', 'save'), 403, '')
+  assertFails(() => managedRelCheck('a/b/c.yml', 'save'), 403, '一层深度')
+  assertFails(() => managedRelCheck('characters\\x.md', 'save'), 403, '反斜杠')
+  // 形状 422：空 rel / slug 不合 / 非章纲 stem / 非 vXX-cXXX 章节
+  assertFails(() => managedRelCheck('', 'save'), 422, '缺少 rel')
+  assertFails(() => managedRelCheck('characters/Bad_Slug.md', 'save'), 422, 'slug')
+  assertFails(() => managedRelCheck('characters/new', 'create'), 422, 'slug')
+  assertFails(() => managedRelCheck('outlines/scratch.md', 'save'), 422, 'vXX-cXXX')
+  assertFails(() => managedRelCheck('chapters/extra.md', 'delete'), 422, 'vXX-cXXX')  // chapterSortKey 宽容位宽（v01-c1 也认），非章号才拒
+})
+
+test('validateManagedText：账本 yml 数组口径（回退与真解析同判）+ md 围栏 + outlines 跳过', (t) => {
+  const good = '- id: r1\n  from: 林晚\n  to: 沈默\n'
+  // 回退口径（yamlLib=null，确定性主路）
+  validateManagedText('relations.yml', good, null)
+  validateManagedText('relations.yml', '', null) // 空文件按空表放行（与快照同宽容）
+  validateManagedText('relations.yml', '[]', null) // flow 空数组放行
+  assertFails(() => validateManagedText('relations.yml', 'title: 不是数组', null), 422, '顶层不是数组')
+  // 快照会静默丢弃的条目形态：裸标量 / null / 数组条 / 空对象条——存时一并 422
+  assertFails(() => validateManagedText('foreshadows.yml', '- 顺手记的一笔', null), 422, '快照会静默丢弃')
+  assertFails(() => validateManagedText('foreshadows.yml', '- null', null), 422, '快照会静默丢弃')
+  assertFails(() => validateManagedText('foreshadows.yml', '- []', null), 422, '快照会静默丢弃')
+  assertFails(() => validateManagedText('foreshadows.yml', '- {}', null), 422, '快照会静默丢弃')
+  // md 实体卡：围栏成对即放行（语义全不问），缺围栏 422
+  validateManagedText('characters/new.md', '---\nname: 新人\nrole: supporting\n---\n\n正文。\n', null)
+  assertFails(() => validateManagedText('characters/new.md', '没有围栏的文本', null), 422, 'frontmatter')
+  // outlines：纯 markdown 无围栏也放行（章纲不是实体卡）
+  validateManagedText('outlines/v01-c001.md', '# 章纲\n\n- 本章目标\n', null)
+  // 真解析路径（借得到 yaml 包才跑）：两条解析路必须同一结论
+  const yamlLib = loadYamlLib(TEST_HOME)
+  if (yamlLib) {
+    validateManagedText('relations.yml', good, yamlLib)
+    assertFails(() => validateManagedText('relations.yml', 'title: 不是数组', yamlLib), 422, '顶层不是数组')
+    assertFails(() => validateManagedText('foreshadows.yml', '- 顺手记的一笔', yamlLib), 422, '快照会静默丢弃')
+  } else {
+    t.log('本机无可借的 yaml 包，真解析分支未覆盖')
+  }
+})
+
+test('readManagedFile：返回原文+指纹（hash=原文 sha256），缺文件 404', () => {
+  const root = makeTmpRoot()
+  const novel = buildSampleNovel(root)
+  const got = readManagedFile(novel, 'relations.yml')
+  const raw = readFileSync(path.join(novel, 'relations.yml'), 'utf8')
+  assert.deepEqual(Object.keys(got), ['ok', 'rel', 'text', 'hash'])
+  assert.equal(got.text, raw)
+  assert.equal(got.hash, sha256Hex(raw))
+  assertFails(() => readManagedFile(novel, 'characters/ghost.md'), 404, '不存在')
+})
+
+test('saveManagedFile：落盘带尾换行 + 返回写后指纹；过期基线 409 逐字节不动；缺失 404；坏文本 422', () => {
+  const root = makeTmpRoot()
+  const novel = buildSampleNovel(root)
+  const target = path.join(novel, 'relations.yml')
+  // 不带 base_hash（缺省跳过基线检查，同 style-save 口径）
+  const clean = '- id: r1\n  from: 林晚\n  to: 沈默\n  kind: ally\n  intensity: 4\n'
+  const result = saveManagedFile(novel, 'relations.yml', clean, {})
+  assert.equal(result.ok, true)
+  assert.equal(result.rel, 'relations.yml')
+  assert.equal(readFileSync(target, 'utf8'), clean, '原文已带尾换行，应逐字节一致')
+  assert.equal(result.hash, sha256Hex(clean))
+
+  // 无尾换行补一个 \n（POSIX 文本惯例），指纹按补后的全文算
+  const noEol = '- id: r2\n  from: A\n  to: B'
+  const r2 = saveManagedFile(novel, 'relations.yml', noEol, {})
+  assert.equal(readFileSync(target, 'utf8'), `${noEol}\n`)
+  assert.equal(r2.hash, sha256Hex(`${noEol}\n`))
+
+  // base_hash 过期 → 409 拒写，磁盘逐字节不动（文案与 project-save 同口径）
+  const fresh = readFileSync(target, 'utf8')
+  assertFails(() => saveManagedFile(novel, 'relations.yml', '- id: x\n  a: b\n', { baseHash: 'deadbeef' }), 409, '外部修改')
+  assert.equal(readFileSync(target, 'utf8'), fresh)
+
+  // 缺失 404（新建走 file-create）；类型/结构 422（校验先于基线检查）
+  assertFails(() => saveManagedFile(novel, 'characters/nope.md', '---\nname: x\n---\n', {}), 404, '不存在')
+  assertFails(() => saveManagedFile(novel, 'relations.yml', 42, {}), 422, '字符串')
+  assertFails(() => saveManagedFile(novel, 'relations.yml', 'title: x', {}), 422, '顶层不是数组')
+  assertFails(() => saveManagedFile(novel, 'characters/lin-waner.md', 'x', {}), 422, 'frontmatter')
+})
+
+test('createManagedFile：新 slug 落盘 + 返回指纹；已存在 409 不覆盖；形状坏 422', () => {
+  const root = makeTmpRoot()
+  const novel = buildSampleNovel(root)
+  const tpl = '---\nname: 新角\nrole: supporting\n---\n\n'
+  const made = createManagedFile(novel, 'characters/new-girl.md', tpl)
+  assert.equal(made.ok, true)
+  assert.equal(readFileSync(path.join(novel, 'characters', 'new-girl.md'), 'utf8'), tpl)
+  assert.equal(made.hash, sha256Hex(tpl))
+  // 已存在 → 409（先到先建，绝不覆盖），原文件逐字节不动
+  const before = readFileSync(path.join(novel, 'characters', 'lin-waner.md'), 'utf8')
+  assertFails(() => createManagedFile(novel, 'characters/lin-waner.md', tpl), 409, '已存在')
+  assert.equal(readFileSync(path.join(novel, 'characters', 'lin-waner.md'), 'utf8'), before)
+  // slug 不合规 422；账本 yml 结构坏 422
+  assertFails(() => createManagedFile(novel, 'characters/Bad.md', tpl), 422, 'slug')
+  // 结构 422 走在 existsSync 之后：新 rel（不存在）+ 坏结构才探得到这道门
+  assertFails(() => createManagedFile(novel, 'world/bad-card.md', '没有围栏', {}), 422, 'frontmatter')
+})
+
+test('deleteManagedFile：删章节与删实体卡落盘；重复删 404', () => {
+  const root = makeTmpRoot()
+  const novel = buildSampleNovel(root)
+  const chPath = path.join(novel, 'chapters', 'v01-c002.md')
+  assert.deepEqual(deleteManagedFile(novel, 'chapters/v01-c002.md'), { ok: true, rel: 'chapters/v01-c002.md' })
+  assert.equal(existsSync(chPath), false)
+  assertFails(() => deleteManagedFile(novel, 'chapters/v01-c002.md'), 404, '不存在')
+  // 实体卡同路：先建后删（create + delete 闭环）
+  createManagedFile(novel, 'research/temp-note.md', '---\nlabel: known\n---\n\n')
+  assert.equal(deleteManagedFile(novel, 'research/temp-note.md').ok, true)
+  assert.equal(existsSync(path.join(novel, 'research', 'temp-note.md')), false)
 })
