@@ -116,12 +116,13 @@ html[data-dsh-maoying-active]:not([data-dsh-mnemon-active]):not([data-dsh-taskbo
 .myt-closeBtn:hover { background: var(--dsw-alias-interactive-bg-hover); color: var(--dsw-alias-label-primary); }
 .myt-closeGlyph { font-size: 18px; line-height: 1; }
 
-/* 内容区：自身滚动容器 */
+/* 内容区：自身滚动容器（顶部 16px 与 tab 条拉开距离，角色卡墙等
+   首元素带边框时不贴条；左右 24 与 tab 条 padding 对齐）*/
 .myt-body {
   flex: 1 1 auto;
   min-height: 0;
   overflow-y: auto;
-  padding: 0 24px 32px;
+  padding: 16px 24px 32px;
 }
 /* 宽度随宿主中栏自适应：不设上限（980 上限已去，宽屏撑满）；min-width
    兜底极窄中栏，低于时 .myt-body（overflow-y:auto 连带 overflow-x:auto）
