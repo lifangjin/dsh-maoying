@@ -72,8 +72,10 @@ import {
   parseStateSnapshot,
   readChapter,
   readOutlineFile,
+  readStyleState,
   rebuildIndex,
   resolveNovelRoot,
+  saveStyleText,
 } from './lib/panel-core.mjs'
 // 静态体检（check 路由）与 CLI check 同源：直接复用 novel-parse 的检查器。
 import { checkProject } from './lib/novel-parse.mjs'
@@ -942,7 +944,7 @@ export async function registerPrefixRouteWithRetry(webServer, route, { attempts 
 }
 
 /**
- * 注册创作台全部路由（docs/creator-panel.md §2 的 15 条）。返回宿主 disposer；
+ * 注册创作台全部路由（docs/creator-panel.md §2 的 17 条）。返回宿主 disposer；
  * webServer 缺席（非 web 部署）时抛错，由 apply 侧统一降级为 warn。
  */
 export async function registerCreatorRoutes(ctx) {
@@ -1117,6 +1119,16 @@ export async function registerCreatorRoutes(ctx) {
           return
         }
 
+        if (route === 'style' && req.method === 'GET') {
+          // 写作风格基准（0.1.19，写作风格 tab 取数）：novel/style.md 全文 +
+          // 指纹（保存路由 base_hash 的基线）+ 插件模板全文（客户端用它预填
+          // 默认基线创建）。found:false = 文件尚未创建，是常态不是错误。
+          const novelDir = resolveNovelRoot(url.searchParams.get('path'), ctx.workspaceRegistry)
+          const style = readStyleState(novelDir)
+          json(res, 200, { ok: true, found: style.found, text: style.text, hash: style.hash, template: style.template })
+          return
+        }
+
         if (route === 'chapter-status' && req.method === 'POST') {
           const body = await readBody(req, res)
           const novelDir = resolveNovelRoot(body.path, ctx.workspaceRegistry)
@@ -1154,6 +1166,16 @@ export async function registerCreatorRoutes(ctx) {
           // base_hash = 面板表单载入时的 project.yml 指纹：外部改过 → 409 拒写
           // （人工改动保护）；旧客户端不带该字段 → undefined，跳过检查。
           json(res, 200, mutateProject(novelDir, body.values, { baseHash: body.base_hash }))
+          return
+        }
+
+        if (route === 'style-save' && req.method === 'POST') {
+          // 写作风格保存（0.1.19）：style.md 整文件覆写（纯 markdown 基准
+          // 文档，无行级键位，整文件替换即最小手术）；base_hash 过期 → 409
+          // 拒写（人工改动保护，与 project-save 同口径）；text 非 string 422。
+          const body = await readBody(req, res)
+          const novelDir = resolveNovelRoot(body.path, ctx.workspaceRegistry)
+          json(res, 200, saveStyleText(novelDir, body.text, { baseHash: body.base_hash }))
           return
         }
 

@@ -899,3 +899,8 @@ html[data-dsh-maoying-active]:not([data-dsh-mnemon-active]):not([data-dsh-taskbo
 .myt-setArea { resize: vertical; }
 .myt-setSelect { cursor: pointer; }
 .myt-setActions { display: flex; justify-content: flex-end; gap: 8px; }
+/* 写作风格 tab：编辑器撑满卡宽 + 等宽字形（编辑的是 md 源文件，对照正文
+   pre 的口径）；空态卡居中引导（缺失时用默认基线创建）。 */
+.myt-styleArea { width: 100%; box-sizing: border-box; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; line-height: 1.6; }
+.myt-styleEmpty { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; padding: 8px 0 4px; }
+.myt-styleEmpty p { margin: 0; max-width: 560px; }

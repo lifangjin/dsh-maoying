@@ -8,6 +8,7 @@
  * foreshadow-status、phase、rebuild-index、chapter 读取、outline 章纲全文
  * 读取、chapter-create 从章纲建章、404、413（响应体可达：先回包后断开）、
  * 迭代路由接线（project-save 改键与越枚举 422、
+ * style 读全文/缺失与 style-save 创建/覆写/409/422、
  * update-check 响应形状、host-debug 五级探针与脱敏、非法 JSON body 400），
  * 以及 registerPrefixRouteWithRetry 的重试语义（同步抛与 rejected promise
  * 两条路）和 apply() 末尾「路由注册失败只 warn」的降级路径。
@@ -463,6 +464,87 @@ test('project-save：过期 base_hash 409 拒写（外部修改冲突），最�
   assert.equal(body.ok, true)
   assert.match(body.project_hash, /^[0-9a-f]{64}$/)
   assert.ok(readFileSync(projectPath, 'utf8').includes('title: 基线试金石'))
+})
+
+test('style：无 style.md 回 found:false + 模板全文；写入后 found:true + 全文 + sha256 指纹；围栏 403', async () => {
+  const env = makeEnv()
+  const handler = await registeredHandler(env)
+  const stylePath = path.join(env.root, 'novel', 'style.md')
+  const get = () => call(handler, { url: `/api/maoying/style?path=${encodeURIComponent(env.root)}`, headers: LOOPBACK })
+
+  // 文件未创建：200 + found:false（常态非错误），template 为插件内置 style.md 全文
+  const empty = await get()
+  assert.equal(empty.status, 200)
+  const emptyBody = JSON.parse(empty.raw)
+  assert.equal(emptyBody.ok, true)
+  assert.equal(emptyBody.found, false)
+  assert.equal(emptyBody.text, null)
+  assert.equal(emptyBody.hash, null)
+  assert.equal(typeof emptyBody.template, 'string')
+  assert.ok(emptyBody.template.includes('写作风格基准'), `template 应为插件模板全文，实得前 50 字：${emptyBody.template.slice(0, 50)}`)
+
+  // 落一份 style.md 后：found:true + 全文 + sha256 指纹
+  writeFileSync(stylePath, '# 写作风格基准\n\n短句优先。\n', 'utf8')
+  const full = await get()
+  assert.equal(full.status, 200)
+  const fullBody = JSON.parse(full.raw)
+  assert.equal(fullBody.ok, true)
+  assert.equal(fullBody.found, true)
+  assert.equal(fullBody.text, '# 写作风格基准\n\n短句优先。\n')
+  assert.equal(fullBody.hash, createHash('sha256').update(fullBody.text, 'utf8').digest('hex'))
+  assert.equal(typeof fullBody.template, 'string')
+
+  // path 围栏与既有读路由同款：非白名单 403
+  const foreign = await call(handler, { url: `/api/maoying/style?path=${encodeURIComponent('/etc')}`, headers: LOOPBACK })
+  assert.equal(foreign.status, 403)
+})
+
+test('style-save：创建/覆写落盘逐字节一致；base_hash 正确 200 且 hash 更新；过期 409 不落盘；text 非 string 422', async () => {
+  const env = makeEnv()
+  const handler = await registeredHandler(env)
+  const stylePath = path.join(env.root, 'novel', 'style.md')
+  const post = (body) => call(handler, { method: 'POST', url: '/api/maoying/style-save', headers: LOOPBACK, body })
+
+  // 创建：文件不存在 + 不带 base_hash（缺省跳过检查，同 project-save 口径）→ 落盘 + 返回写后指纹
+  const created = await post({ path: env.root, text: '# 风格 A\n\n短句优先。\n' })
+  assert.equal(created.status, 200)
+  const createdBody = JSON.parse(created.raw)
+  assert.equal(createdBody.ok, true)
+  assert.equal(readFileSync(stylePath, 'utf8'), '# 风格 A\n\n短句优先。\n', '落盘内容应逐字节一致')
+  assert.equal(createdBody.hash, createHash('sha256').update('# 风格 A\n\n短句优先。\n', 'utf8').digest('hex'))
+
+  // base_hash 正确 → 覆写成功，hash 更新为写后新指纹
+  const textB = '# 风格 B\n\n对话推动剧情。\n'
+  const ok = await post({ path: env.root, text: textB, base_hash: createdBody.hash })
+  assert.equal(ok.status, 200)
+  const okBody = JSON.parse(ok.raw)
+  assert.equal(okBody.ok, true)
+  assert.equal(okBody.hash, createHash('sha256').update(textB, 'utf8').digest('hex'))
+  assert.notEqual(okBody.hash, createdBody.hash)
+  assert.equal(readFileSync(stylePath, 'utf8'), textB)
+
+  // base_hash 过期（先外部改文件）→ 409 拒写不落盘
+  writeFileSync(stylePath, '# 作者手改\n', 'utf8')
+  const stale = await post({ path: env.root, text: '# 覆盖手改\n', base_hash: okBody.hash })
+  assert.equal(stale.status, 409)
+  const staleBody = JSON.parse(stale.raw)
+  assert.equal(staleBody.ok, false)
+  assert.ok(staleBody.error.includes('外部修改'), `错误应点名外部修改：${staleBody.error}`)
+  assert.equal(readFileSync(stylePath, 'utf8'), '# 作者手改\n', '409 拒写不得落盘')
+
+  // 文件不存在 + 带 base_hash → 也 409（声称基于既有版本改，磁盘却无文件）
+  rmSync(stylePath)
+  const ghost = await post({ path: env.root, text: '# 幽灵基线\n', base_hash: okBody.hash })
+  assert.equal(ghost.status, 409)
+  assert.equal(JSON.parse(ghost.raw).ok, false)
+
+  // text 非 string → 422
+  const bad = await post({ path: env.root, text: 42 })
+  assert.equal(bad.status, 422)
+
+  // path 围栏
+  const foreign = await post({ path: '/etc', text: '# x\n' })
+  assert.equal(foreign.status, 403)
 })
 
 test('check：status 越枚举章节透出 error 级问题；非白名单 path 403', async () => {
