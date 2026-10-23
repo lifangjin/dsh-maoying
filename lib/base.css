@@ -235,6 +235,10 @@ html[data-dsh-maoying-active]:not([data-dsh-mnemon-active]):not([data-dsh-taskbo
   font-weight: 600;
 }
 .myt-subTab .myt-boardCount { line-height: 16px; }
+/* 二级分类 tab（设定 tab 内 world 分区按 category 再切）：比一级子 tab 再小一号 */
+.myt-subTabsInner { margin-top: -2px; }
+.myt-subTabsInner .myt-subTab { font-size: 12px; line-height: 16px; padding: 3px 8px; border-radius: 6px; }
+.myt-subTabsInner .myt-subTab .myt-boardCount { line-height: 14px; }
 
 /* ── 卡片 / 栅格 ───────────────────────────────────────────────────────── */
 .myt-card {
