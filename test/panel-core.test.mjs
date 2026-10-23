@@ -833,7 +833,7 @@ test('生产默认路径：不传 options 时从 DSH_HOME 惰性借 yaml 包，r
   assert.equal(parseStateSnapshot(path.join(root2, 'novel')).project.description, null)
 })
 
-// ── 受管文件写面（0.2.x「全量可编辑写面」）：白名单 / 结构校验 / 读存建删 ──────
+// ── 受管文件写面（0.1.20「全量可编辑写面」）：白名单 / 结构校验 / 读存建删 ──────
 
 test('managedRelCheck：白名单矩阵——六个账本 yml、四个 md 目录 slug、outlines 章纲、chapters 仅删', () => {
   // 允许形态与 kind 归类

@@ -1209,7 +1209,7 @@ export async function registerCreatorRoutes(ctx) {
         }
 
         if (route === 'file-source' && req.method === 'GET') {
-          // 受管文件读（0.2.x「全量可编辑写面」，四条通用路由之一）：rel 白
+          // 受管文件读（0.1.20「全量可编辑写面」，四条通用路由之一）：rel 白
           // 名单校验 + 结构口径在 panel-core（managedRelCheck / readManagedFile），
           // 路由只做围栏与分发。hash 为原文指纹——编辑态保存的 base_hash 基线。
           const novelDir = resolveNovelRoot(url.searchParams.get('path'), ctx.workspaceRegistry)
