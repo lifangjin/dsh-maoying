@@ -710,6 +710,14 @@ html[data-dsh-maoying-active]:not([data-dsh-mnemon-active]):not([data-dsh-taskbo
 }
 .myt-graphFoot { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; color: var(--dsw-alias-label-tertiary); font-size: 11px; }
 
+/* ── 关系图角色图例：色点 + 角色名（canvas 内色同 NODE_ROLE_COLORS）──── */
+.myt-graphLegend { display: inline-flex; align-items: center; gap: 10px; margin-left: auto; }
+.myt-legendItem { display: inline-flex; align-items: center; gap: 4px; }
+.myt-legendDot { width: 8px; height: 8px; border-radius: 50%; flex: none; }
+.myt-legendDot[data-role="protagonist"] { background: #f53f3f; }
+.myt-legendDot[data-role="supporting"] { background: #165dff; }
+.myt-legendDot[data-role="antagonist"] { background: #1d2129; border: 1px solid var(--dsw-alias-border-l4, var(--dsw-alias-border-l2)); }
+
 /* ── 关系图工具角标：＋/－ 缩放常驻；全屏按钮能力检测通过才渲染 ───────── */
 .myt-graphTools { position: absolute; top: 10px; right: 10px; display: flex; gap: 6px; z-index: 3; }
 .myt-graphTool {
