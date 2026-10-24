@@ -49,7 +49,9 @@
  *   注册点（inject webServer + workspaceRegistry，见 registerCreatorRoutes）。
  *   路由段与安装段彼此独立、各失败各的：路由注册/请求处理失败只 warn，
  *   安装器语义分毫不动。要点：信任围栏、duplicate prefix route 短重试、
- *   限额 JSON 读体、client.css 现读下发。
+ *   限额 JSON 读体、client.css 现读下发、disposer 挂 ctx.effect（宿主对
+ *   cordis.patch.yml 的 HMR 热重载会重建插件纤维，路由必须随纤维注销，
+ *   否则残留死 handler 报 inactive context，见 apply 内注释）。
  */
 
 import { closeSync, copyFileSync, existsSync, mkdirSync, openSync, readdirSync, readFileSync, readSync, renameSync, statSync, unlinkSync, writeFileSync } from 'node:fs'
@@ -1005,8 +1007,9 @@ export async function registerPrefixRouteWithRetry(webServer, route, { attempts 
 }
 
 /**
- * 注册创作台全部路由（docs/creator-panel.md §2 的 23 条）。返回宿主 disposer；
- * webServer 缺席（非 web 部署）时抛错，由 apply 侧统一降级为 warn。
+ * 注册创作台全部路由（docs/creator-panel.md §2 的 23 条）。返回宿主 disposer
+ *（由 apply 挂接 ctx.effect——纤维销毁时注销路由，防 HMR 热重载后残留死
+ * handler）；webServer 缺席（非 web 部署）时抛错，由 apply 侧统一降级为 warn。
  */
 export async function registerCreatorRoutes(ctx) {
   const webServer = ctx?.webServer
@@ -1481,11 +1484,46 @@ export function apply(ctx = {}, _config = {}) {
   // 注：0.2.1-rc.2+ 的内联委派行守卫已由 v2 AgentPreset 形态适配（composeManagedRows
   // 按宿主版本自动选形状，所选形态带在安装日志里），不再需要降级提示。
 
+  // 路由 disposer 挂接宿主生命周期（0.1.23，修「inactive context」面板瘫）：
+  // 宿主 dsh CLI 的 runProfile 对 <home>/cordis.patch.yml 与 profile 级
+  // cordis.patch.yml 都挂了 HMR 热重载（dsh-app-boot watchUserPatches），本插件
+  // 安装器恰会在版本变化时重写 home patch 托管块——插件纤维随即被整树重建。
+  // 若 disposer 不挂 ctx.effect，旧纤维销毁后 /api/maoying 路由残留在
+  // webServer 表里（handler 闭包攥着死 ctx），新纤维 apply 又被 duplicate
+  // prefix route 挡住，面板请求全落死 handler，报
+  // `cannot get required service "workspaceRegistry" in inactive context`。
+  // 挂接语义：ctx.effect 可用则挂（纤维销毁时 cordis 自动注销路由）；注册
+  // 完成时纤维已销毁（effect 抛 INACTIVE_EFFECT 等）则立即手动注销，堵住
+  // 「注册与销毁竞态」的残留窗口；宿主连 effect/on 都不提供时只 warn 提示
+  // 路由可能残留（不主动注销——此时纤维活着，路由该留）。注销本身自吞错：
+  // 卸载路径的失败不能炸宿主。
+  const wireRouteDisposal = (dispose) => {
+    const removeRoute = () => {
+      try { dispose() } catch { /* 卸载路径绝不抛 */ }
+    }
+    try {
+      if (typeof ctx.effect === 'function') {
+        ctx.effect(() => removeRoute)
+        return
+      }
+      if (typeof ctx.on === 'function') {
+        ctx.on('dispose', removeRoute)
+        return
+      }
+    } catch {
+      // 注册完成时纤维已销毁（cordis effect 对 inactive context 抛
+      // INACTIVE_EFFECT）：路由立即手动注销，不留残留。
+      removeRoute()
+      return
+    }
+    logger.warn?.('maoying-installer: 宿主 ctx 无 effect/on 生命周期接口，创作台路由在插件卸载后可能残留')
+  }
+
   // 创作台路由（三期）：与安装段彼此独立——注册失败只 warn，面板不可用不
   // 拖累安装器语义。registerCreatorRoutes 是 async 函数，同步阶段不可能 throw
   //（异常一律进 rejected promise），外层 try 对它是永假防御——只挂 .catch
   // 一条兜底通道即可，异常不会冒出 apply。
-  registerCreatorRoutes(ctx).catch((error) => {
+  registerCreatorRoutes(ctx).then(wireRouteDisposal, (error) => {
     logger.warn?.(`毛颖创作台路由注册失败（面板不可用，其余功能不受影响）: ${error?.message ?? error}`)
   })
 }

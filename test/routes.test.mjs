@@ -885,3 +885,113 @@ test('apply()：webServer 缺席时路由注册失败只 warn，不抛不炸', a
     `应有路由注册失败警告，实得 ${JSON.stringify(warns)}`,
   )
 })
+
+// ── 路由 disposer 生命周期挂接（0.1.23，修 HMR 热重载后死路由残留）──────────
+// 病灶回放：宿主 runProfile 对 <home>/cordis.patch.yml 挂了 HMR 热重载，本插件
+// 安装器版本变化时重写该文件 → 插件纤维整树重建。旧 apply 丢弃 register 返回
+// 的 disposer，旧纤维销毁后 /api/maoying 残留死 handler（ctx 已 inactive），
+// 新纤维 apply 被 duplicate prefix route 挡住 → 面板所有请求 500
+// `cannot get required service "workspaceRegistry" in inactive context`。
+
+/** 真实增删的 webServer 假件：register 落表，disposer 按对象出表。 */
+function realTableWebServer() {
+  const routes = []
+  return {
+    routes,
+    webServer: {
+      register(route) {
+        if (routes.some((r) => r.kind === route.kind && r.path === route.path)) {
+          throw new Error(`webserver: duplicate ${route.kind} route "${route.path}"`)
+        }
+        routes.push(route)
+        return () => {
+          const at = routes.indexOf(route)
+          if (at !== -1) routes.splice(at, 1)
+        }
+      },
+    },
+  }
+}
+
+/** 收集 ctx.effect 注册的 effect 回调（宿主纤维销毁时逐个调用其返回值）。 */
+function effectCollectingCtx(webServer, registry) {
+  const effects = []
+  const warns = []
+  return {
+    effects,
+    warns,
+    ctx: {
+      logger: { info() {}, warn(...args) { warns.push(args.map(String).join(' ')) } },
+      workspaceRegistry: registry,
+      get: () => null,
+      effect(fn) { effects.push(fn) },
+      webServer,
+    },
+  }
+}
+
+const flushApply = async () => {
+  // registerCreatorRoutes → registerPrefixRouteWithRetry（await webServer.register）
+  // → .then(wireRouteDisposal)：三段微任务链，两轮 setImmediate 足够沉淀。
+  await new Promise((resolve) => setImmediate(resolve))
+  await new Promise((resolve) => setImmediate(resolve))
+}
+
+test('apply()：路由 disposer 挂接 ctx.effect，纤维销毁时注销路由', async () => {
+  const { apply } = await import('../index.mjs')
+  const { routes, webServer } = realTableWebServer()
+  const { ctx, effects } = effectCollectingCtx(webServer, makeRegistry([]))
+  apply(ctx)
+  await flushApply()
+  assert.equal(routes.length, 1, '注册后路由应恰有一条')
+  assert.equal(effects.length, 1, 'disposer 应挂接 ctx.effect')
+
+  // 纤维销毁：宿主跑 effect 回调的返回值——路由应随之出表，不留死 handler。
+  const dispose = effects[0]()
+  assert.equal(typeof dispose, 'function')
+  dispose()
+  assert.equal(routes.length, 0, '纤维销毁后路由应已注销')
+
+  // 纤维重建（HMR 热重载后的新 apply）：同一前缀应能再次注册成功。
+  const again = effectCollectingCtx(webServer, makeRegistry([]))
+  apply(again.ctx)
+  await flushApply()
+  assert.equal(routes.length, 1, '热重载后新纤维应能重新注册（不再被残留 duplicate 挡住）')
+  assert.equal(again.effects.length, 1)
+})
+
+test('apply()：注册完成时纤维已销毁（effect 抛 INACTIVE_EFFECT）→ 路由立即注销', async () => {
+  const { apply } = await import('../index.mjs')
+  const { routes, webServer } = realTableWebServer()
+  const warns = []
+  const ctx = {
+    logger: { info() {}, warn(...args) { warns.push(args.map(String).join(' ')) } },
+    workspaceRegistry: makeRegistry([]),
+    get: () => null,
+    // 模拟 cordis：对 inactive context 的 fiber 调 effect 抛 INACTIVE_EFFECT。
+    effect() { const e = new Error('cannot create effect on inactive context'); e.code = 'INACTIVE_EFFECT'; throw e },
+    webServer,
+  }
+  apply(ctx)
+  await flushApply()
+  assert.equal(routes.length, 0, '竞态窗口内纤维已死，路由应立即手动注销，不残留')
+})
+
+test('apply()：宿主无 effect/on 接口 → 路由保留并 warn 提示残留风险', async () => {
+  const { apply } = await import('../index.mjs')
+  const { routes, webServer } = realTableWebServer()
+  const warns = []
+  const ctx = {
+    logger: { info() {}, warn(...args) { warns.push(args.map(String).join(' ')) } },
+    workspaceRegistry: makeRegistry([]),
+    get: () => null,
+    webServer,
+  }
+  apply(ctx)
+  await flushApply()
+  assert.equal(routes.length, 1, '纤维活着且宿主无生命周期接口，路由应保留')
+  assert.ok(
+    warns.some((w) => w.includes('创作台路由在插件卸载后可能残留')),
+    `应有残留风险 warn，实得 ${JSON.stringify(warns)}`,
+  )
+})

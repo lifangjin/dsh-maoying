@@ -29,6 +29,7 @@ webServer.register({ kind: 'prefix', path: '/api/maoying', handler: async (req, 
 
 - **信任围栏**：isTrustedApiRequest 信任围栏（Host 回环或 webRuntime.trustedHosts + 拒 cross-site + origin 同源校验），403 走 `{ ok: false, error: 'forbidden' }`（错误形状与全局契约同形，客户端形状检查不必对这一条网开一面）。读取 trustedHosts 每请求实时 `ctx.get('webRuntime')?.trustedHosts ?? []`，自捕不抛。
 - duplicate prefix route 短重试（8 次 × 30ms）。
+- **路由随纤维注销**（0.1.23）：register 返回的 disposer 由 apply 挂接 `ctx.effect`——宿主对 `<home>/cordis.patch.yml` 与 profile 级 patch 都有 HMR 热重载（版本升级重写托管块即触发），插件纤维整树重建时路由必须随之出表；否则残留死 handler（inactive context）且新注册被 duplicate 挡住，面板全接口 500。注册完成时纤维已销毁（effect 抛 INACTIVE_EFFECT）则立即手动注销堵竞态窗口。
 - 所有响应 JSON；错误形状统一 `{ ok: false, error }`（读路由可省 ok，直接 `{ error }` + 状态码）。
 - **路径安全**：凡是带 `path` 参数的请求，必须 resolve 后与 workspaceRegistry 列出的某个 workspace root **严格相等**（不做子路径、不做 ~ 展开）；novel 目录恒为 `<root>/novel`，file 参数 basename 化 + 规范化后必须落在 novel 根内（防穿越）。不满足一律 403。
 - 全程 try/catch，路由崩溃不弄死宿主；注册失败只 warn（安装器语义不变）。
