@@ -62,7 +62,7 @@ const {
   deleteManagedFile,
   PanelError,
 } = await import('../lib/panel-core.mjs')
-const { FIVE_DIM_KEYS, sha256Hex } = await import('../lib/novel-parse.mjs')
+const { FIVE_DIM_KEYS, flowScalar, sha256Hex } = await import('../lib/novel-parse.mjs')
 const { loadYamlLib } = await import('../lib/yaml-loader.mjs')
 
 /** 状态码断言助手：fn 必须抛出带指定 statusCode 的 PanelError。 */
@@ -729,6 +729,71 @@ test('mutateChapterBody：过期基线 409 不落盘；无围栏 422；body 非 
   // 基线大小写宽容：大写 hex 归一后视为同值
   const upper = sha256Hex(readFileSync(target, 'utf8')).toUpperCase()
   assert.equal(mutateChapterBody(novel, 'v01-c001.md', '大写基线正文', { baseHash: upper }).ok, true)
+})
+
+test('mutateChapterBody：可选 title 同刀替换围栏内 title 行——保注释、flowScalar 落值、正文一次原子落盘；缺省不动 title', () => {
+  const root = makeTmpRoot()
+  const novel = buildSampleNovel(root)
+  const target = path.join(novel, 'chapters', 'v01-c001.md')
+  // title 行带行尾注释：保注释刀必须原样保留（与 mutateChapterStatus 同款）
+  const withComment = readFileSync(target, 'utf8').replace('title: 雪夜来客', 'title: 雪夜来客   # 当铺夜话')
+  writeFileSync(target, withComment, 'utf8')
+  const baseline = sha256Hex(withComment)
+
+  // 全角冒号标题（flowScalar 按其规则裸落）与正文同一次原子写
+  const res = mutateChapterBody(novel, 'v01-c001.md', '标题正文一起改。\n\n第二段。', { baseHash: baseline, title: '第一卷：启程' })
+  const after = readFileSync(target, 'utf8')
+  assert.equal(res.ok, true)
+  assert.deepEqual(Object.keys(res), ['ok', 'hash'])
+  assert.equal(res.hash, sha256Hex(after), '返回 hash = 写后全文指纹')
+  assert.ok(after.includes(`title: ${flowScalar('第一卷：启程')}   # 当铺夜话`), 'title 值按 flowScalar 落值且行尾注释保留')
+  assert.ok(after.includes('标题正文一起改。\n\n第二段。\n'), '正文同刀替换且末尾补换行')
+  assert.ok(after.includes('summary: 当铺夜客以半块玉佩抵债，主角看出端倪。'), '围栏内其余行一字不动')
+  assert.ok(after.startsWith('---\nvolume: v01\nnum: 1\n'), '围栏前逐字节保留')
+
+  // 半角「冒号+空格」标题按 flowScalar 规则落 JSON 引号（裸写会被 YAML 吃掉冒号）
+  const midBaseline = sha256Hex(after)
+  mutateChapterBody(novel, 'v01-c001.md', '正文二改。', { baseHash: midBaseline, title: 'C1: Begin' })
+  assert.ok(readFileSync(target, 'utf8').includes('title: "C1: Begin"'), '半角冒号标题应加引号落值')
+
+  // 回读：readChapter 元数据已是新标题（引号内值往返一致）
+  const reread = readChapter(novel, 'v01-c001.md', { yamlLib: null })
+  assert.equal(reread.frontmatter.title, 'C1: Begin')
+  assert.ok(reread.body.includes('正文二改'))
+
+  // 缺省（不带 title）调用：title 行原样——旧调用方兼容口径
+  const keepBaseline = sha256Hex(readFileSync(target, 'utf8'))
+  mutateChapterBody(novel, 'v01-c001.md', '只改正文。', { baseHash: keepBaseline })
+  assert.ok(readFileSync(target, 'utf8').includes('title: "C1: Begin"'), '缺省 title 不动 title 行')
+})
+
+test('mutateChapterBody：title 非 string / trim 空串 422 拒写不落盘', () => {
+  const root = makeTmpRoot()
+  const novel = buildSampleNovel(root)
+  const target = path.join(novel, 'chapters', 'v01-c001.md')
+  const before = readFileSync(target, 'utf8')
+  assertFails(() => mutateChapterBody(novel, 'v01-c001.md', '正文', { title: 42 }), 422, 'title')
+  assertFails(() => mutateChapterBody(novel, 'v01-c001.md', '正文', { title: '   ' }), 422, 'title')
+  assert.equal(readFileSync(target, 'utf8'), before, '422 拒写不得落盘')
+})
+
+test('mutateChapterBody：title 行缺失/多处 409 拒写不落盘', () => {
+  const root = makeTmpRoot()
+  const novel = buildSampleNovel(root)
+  const target = path.join(novel, 'chapters', 'v01-c001.md')
+  const before = readFileSync(target, 'utf8')
+
+  // 无 title 行：0 处命中 409
+  writeFileSync(target, before.replace('title: 雪夜来客\n', ''), 'utf8')
+  const noTitle = readFileSync(target, 'utf8')
+  assertFails(() => mutateChapterBody(novel, 'v01-c001.md', '正文', { baseHash: sha256Hex(noTitle), title: '新标题' }), 409, 'title 行')
+  assert.equal(readFileSync(target, 'utf8'), noTitle, '409 拒写不得落盘')
+
+  // 两处 title 行：形状不明 409
+  writeFileSync(target, before.replace('title: 雪夜来客', 'title: 雪夜来客\nalias: 备用\ntitle: 别名'), 'utf8')
+  const dup = readFileSync(target, 'utf8')
+  assertFails(() => mutateChapterBody(novel, 'v01-c001.md', '正文', { baseHash: sha256Hex(dup), title: '新标题' }), 409, 'title 行')
+  assert.equal(readFileSync(target, 'utf8'), dup, '409 拒写不得落盘')
 })
 
 test('mutateOutlineBody：整文件替换；文件名或 stem 皆可；过期基线 409；穿越/坏 stem 拒；不存在 404', () => {

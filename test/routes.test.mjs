@@ -594,6 +594,41 @@ test('chapter-save：围栏保留正文替换 200 带新指纹；过期 base_has
   assert.equal(foreign.status, 403)
 })
 
+test('chapter-save：title 透传——围栏内 title 行与正文同刀原子替换；缺省不动 title；空 title 422', async () => {
+  const env = makeEnv()
+  const handler = await registeredHandler(env)
+  const chapterPath = path.join(env.root, 'novel', 'chapters', 'v01-c001.md')
+  const post = (body) => call(handler, { method: 'POST', url: '/api/maoying/chapter-save', headers: LOOPBACK, body })
+  const getChapter = async () => {
+    const res = await call(handler, { url: `/api/maoying/chapter?path=${encodeURIComponent(env.root)}&file=v01-c001.md`, headers: LOOPBACK })
+    assert.equal(res.status, 200)
+    return JSON.parse(res.raw)
+  }
+
+  // 带 title：与正文一次原子落盘，frontmatter title 行换新
+  const detail = await getChapter()
+  const okRes = await post({ path: env.root, file: 'v01-c001.md', body: '带标题保存。', base_hash: detail.hash, title: '第一卷：启程' })
+  assert.equal(okRes.status, 200)
+  const okBody = JSON.parse(okRes.raw)
+  assert.equal(okBody.ok, true)
+  const after = readFileSync(chapterPath, 'utf8')
+  assert.ok(after.includes('title: 第一卷：启程'), 'title 行应换新值')
+  assert.ok(after.includes('带标题保存。\n'), '正文应同刀替换')
+  const reread = await getChapter()
+  assert.equal(reread.frontmatter.title, '第一卷：启程', 'GET chapter 回读新标题')
+
+  // 不带 title 的保存：title 行原样（客户端未改标题不发 title 的兼容口径）
+  const ok2 = await post({ path: env.root, file: 'v01-c001.md', body: '再保存。', base_hash: reread.hash })
+  assert.equal(ok2.status, 200)
+  assert.ok(readFileSync(chapterPath, 'utf8').includes('title: 第一卷：启程'), '缺省 title 不动 title 行')
+
+  // trim 空串 title → 422 拒写不落盘
+  const before422 = readFileSync(chapterPath, 'utf8')
+  const bad = await post({ path: env.root, file: 'v01-c001.md', body: 'x', title: '   ' })
+  assert.equal(bad.status, 422)
+  assert.equal(readFileSync(chapterPath, 'utf8'), before422, '422 拒写不得落盘')
+})
+
 test('outline-save：整文件替换 200 带新指纹；过期 base_hash 409 不落盘；坏 file 拒；非白名单 path 403', async () => {
   const env = makeEnv()
   const handler = await registeredHandler(env)

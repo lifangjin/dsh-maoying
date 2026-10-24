@@ -467,6 +467,20 @@ html[data-dsh-maoying-active]:not([data-dsh-mnemon-active]):not([data-dsh-taskbo
    13px/22px 行高）所见即所得，高度随内容自动长高——当年的等宽字体 +
    resize: vertical 已成史。章纲编辑区（.myt-outlineArea）仍手动保存。 */
 .myt-bodyEdit { display: flex; flex-direction: column; gap: 8px; }
+/* 0.1.25 标题编辑：编辑器顶部章节名输入框——与正文一次原子保存 */
+.myt-chapterEditTitle {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 8px 10px;
+  border: 1px solid color-mix(in srgb, var(--dsw-alias-state-business-primary) 45%, transparent);
+  border-radius: 10px;
+  background: var(--dsw-alias-bg-layer-1, var(--dsw-alias-bg-layer-2));
+  color: var(--dsw-alias-label-primary);
+  font-family: inherit;
+  font-size: 14px;
+  line-height: 22px;
+  font-weight: 600;
+}
 .myt-chapterEditArea {
   width: 100%;
   box-sizing: border-box;

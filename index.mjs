@@ -1280,9 +1280,10 @@ export async function registerCreatorRoutes(ctx) {
           // （含）之前逐字节保留、围栏后整段替换（正文是自由形态文本，无行级
           // 键位可手术）；base_hash 过期 → 409 拒写（人工改动保护，与
           // project-save 同口径）；body 非 string / 缺围栏 422、章节缺 404。
+          // title 可选（0.1.25），提供则与正文同刀原子替换围栏内 title 行。
           const body = await readBody(req, res)
           const novelDir = resolveNovelRoot(body.path, ctx.workspaceRegistry)
-          json(res, 200, mutateChapterBody(novelDir, body.file, body.body, { baseHash: body.base_hash }))
+          json(res, 200, mutateChapterBody(novelDir, body.file, body.body, { baseHash: body.base_hash, title: body.title }))
           return
         }
 
