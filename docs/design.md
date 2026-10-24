@@ -53,7 +53,7 @@ dsh-maoying/
      ```
 
    - 全程幂等：标记块已存在且版本一致则跳过；不一致则整块替换。YAML 解析/序列化运行时从 dsh home 惰性借宿主自带的 `yaml` 包（lib/yaml-loader.mjs 多级探针），借不到回退内置极简解析（JSON 单行回退同样合法 YAML）——仓库零 npm 依赖，dependencies 恒为空。
-   - 按宿主版本自动选委派行形状：≥0.2.1-rc.2 写 v2 AgentPreset 六行块（agent.cordis.v2.yml），否则写 v1 内联单行块；宿主升降级重启即整块切换，不再需要任何降级提示（形态依据见 §8，支持面见 §6）。
+   - 按宿主版本自动选委派行形状：≥0.2.1-rc.2 写 v2 AgentPreset 六行块（agent.cordis.v2.yml），确知 <0.2.1-rc.2 写 v1 内联单行块；宿主版本完全未知（五级探针全败）时不写声明行、预设文件照落走 partial 自愈（下次启动版本可读时自动补写）——绝不把可能已 ≥0.2.1-rc.2 的宿主声明成 v1 内联。宿主升降级重启即整块切换，不再需要任何降级提示（形态依据见 §8，支持面见 §6）。
 3. 卸载 `dsh plugin remove dsh-maoying` 后：bundle 行消失，托管块与 .agent-presets/maoying/ 需手动删（README 写明两条 rm 命令）。
 
 ## 2. 功能裁决（一期范围）
@@ -116,15 +116,15 @@ novel/
 
 | toolName | 角色 | 干什么 | backgroundMode | 工具面（toolFilter.allow） |
 |---|---|---|---|---|
-| outline | 大纲师 | 卷章规划、章节大纲+五维字段 | continuable | read read_image glob grep write edit bash ask_user_question todo_write |
-| write | 写手 | 章节正文（按大纲写、衔接前章、回报设定变更） | continuable | read read_image glob grep write edit bash ask_user_question todo_write |
-| review | 审校 | 审稿清单 + 一致性扫描（冲突/时间线/伏笔/设定 + 连贯六维，只读、出报告不改稿） | one-shot | read read_image glob grep todo_write ask_user_question |
-| lore | 设定管理员 | 章节/角色/世界观/伏笔/时间线/记忆/线索板维护，出场记录与伏笔状态推进 | continuable | read glob grep write edit bash ask_user_question todo_write |
+| outline | 大纲师 | 卷章规划、章节大纲+五维字段 | continuable | read read_image glob grep write edit bash skill ask_user_question todo_write |
+| write | 写手 | 章节正文（按大纲写、衔接前章、回报设定变更） | continuable | read read_image glob grep write edit bash skill ask_user_question todo_write |
+| review | 审校 | 审稿清单 + 一致性扫描（冲突/时间线/伏笔/设定 + 连贯六维，只读、出报告不改稿） | one-shot | read read_image glob grep skill todo_write ask_user_question |
+| lore | 设定管理员 | 章节/角色/世界观/伏笔/时间线/记忆/线索板维护，出场记录与伏笔状态推进 | continuable | read glob grep write edit bash skill ask_user_question todo_write |
 | research | 素材调研员 | 联网考据（历史/地理/专业领域），笔记落 novel/research/ | one-shot | web_search web_fetch glob grep read write bash ask_user_question todo_write |
 
-主编工具面（restrict.mjs 白名单）：outline write review lore research + send_message list_agents interrupt_agent + glob grep read read_image bash + todo_write ask_user_question get_goal create_goal update_goal exit_plan_mode job_output job_list job_kill。registry deny: ['skill']（堵 ~1.3k 技能目录注入）。
+主编工具面（restrict.mjs 白名单）：outline write review lore research + send_message list_agents interrupt_agent + glob grep read read_image bash + todo_write ask_user_question get_goal create_goal update_goal exit_plan_mode job_output job_list job_kill + edit（主编亲笔小修小补不过委派）。其中 'write' 一名双义——单条 'write' 同时放行 tool-fs 的文件写工具与 delegation-write 以 toolName: write 注册的委派工具（白名单按工具名匹配，宿主 registry 对同名工具的处理仓内无法核实，改名前必须先核实）。registry deny: ['skill']（堵 ~1.3k 技能目录注入）。
 
-注意：toolFilter.allow 一律不放 mcp__* 工具（子代理创建时 tools.restrict 校验名字必须在注册面，MCP 是否挂载是 host 事实，硬编码会让未装 tavily 的宿主直接建不出子代理）。
+注意：toolFilter.allow 一律不放 mcp__* 工具（子代理创建时 tools.restrict 校验名字必须在注册面，MCP 是否挂载是 host 事实，硬编码会让未装 tavily 的宿主直接建不出子代理）；skill 仅用于按 persona 加载 maoying-* 方法论技能（审校同样只读不改）。
 
 delegation-labels 静态角色名映射：{outline: 大纲师, write: 写手, review: 审校, lore: 设定管理员, research: 素材调研员}。
 
@@ -172,7 +172,7 @@ persona prefix 内容骨架（agent.cordis.yml 内联，中文书写）：
 - ✅ **技能包（黄金三章/爽点节奏/审校清单/伏笔管理）**——已做：skills/ 四目录随包分发，安装器复制到 `<home>/skills/maoying-*`（逐字节比较幂等 + .installed-version 标记，见 index.mjs installSkills）。
 - ✅ **导出（MD/TXT/EPUB）**——已做：`maoying export [dir] --format md|txt|epub [--out <目录>]`；EPUB 由 lib/epub.mjs 零依赖打包（手写 stored zip + CRC32 表格法，EPUB 3 最小合法结构）。
 - ✅ **0.2.1-rc.2+ AgentPreset 形态适配**——已做：presets/maoying/agent.cordis.v2.yml（主编 + 5 角色 preset 的 v2 组合源）+ index.mjs composeManagedRows 按宿主版本双形态切换（v1 内联 / v2 AgentPreset，宿主升降级重启即整块换形状；防漂移由 test/composition.test.mjs 逐字节断言，见 README「兼容面」）。
-- ✅ **Web 创作台面板**——已做：/api/maoying/* 十七条路由 + 左侧栏入口 + 会话中栏全页面板，九视图（概览（含书稿元信息编辑）/章节/角色/伏笔看板/关系图/时间线/设定/写作风格/索引板）；设计与契约见 docs/creator-panel.md。
+- ✅ **Web 创作台面板**——已做：/api/maoying/* 二十三条路由 + 左侧栏入口 + 会话中栏全页面板，九视图（概览（含书稿元信息编辑）/章节/角色/伏笔看板/关系图/时间线/设定/写作风格/索引板）；设计与契约见 docs/creator-panel.md。
 
 ## 9. 五期：共创模式（作者亲笔稿）
 

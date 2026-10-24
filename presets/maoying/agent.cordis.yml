@@ -110,6 +110,9 @@
   disabled: !!js process.platform !== 'win32'
 
 # ── filesystem ──────────────────────────────────────────────────────────────
+# 命名注意：tool-fs 的文件写工具名是 write，与下方 delegation 组 delegation-write
+# 以 toolName: write 注册的委派工具同名（'write' 一名双义——restrict.mjs 的
+# MAIN_AGENT_ALLOW 单条同时放行两义，详见 delegation-write 行注释）。
 
 - id: tool-fs
   name: '@deepseek-ai/dsh-tool-fs'
@@ -232,6 +235,12 @@
             - todo_write
 
     # 写手：章节正文
+    # 命名注意：toolName: write 与本文件上方 filesystem 区 tool-fs 提供的文件
+    # 写工具 write 同名——主编工具面里 'write' 一名双义（文件写 vs 本委派）。
+    # 宿主 registry 对同名工具的处理仓内无法核实，故不改 toolName（行为风险）；
+    # restrict.mjs 的 MAIN_AGENT_ALLOW 单条 'write' 即同时放行两义。改名前必须
+    # 先核实宿主 registry 对同名工具的处理，并连同 restrict.mjs 与 filesystem
+    # 区一起改。
     - id: delegation-write
       name: '@deepseek-ai/dsh-tool-subagent'
       config:

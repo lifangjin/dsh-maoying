@@ -45,7 +45,7 @@
   - `suspense` 具体悬念：本章悬念与章尾钩子的问题化表述（必须是「读者会问出的问题」，不是「作者知道的事实」）。
   - `interpersonal_tension` 人际张力：本章人物关系中的压力与变化（谁与谁的矛盾升温/缓和/变质）。
 - 五维字段在大纲阶段（outline 角色）写定、写作阶段（write 角色）覆盖、审校阶段（review 角色）对照——三处都用同一组键，这就是「按大纲写」的可检查形态。
-- 可选 `writer` 键（co-write 用）：`author | ai`，记本章正文归谁写；缺省按 project.yml 的 `mode` 推——`author-draft` 下整本按 author、`ai-draft` 下整本按 ai。键只做记录与面板展示，状态机仍看 `status`。
+- 可选 `writer` 键（co-write 用）：`author | ai`，记本章正文归谁写；缺省按 project.yml 的 `mode` 推——`author-draft` 下整本按 author、`ai-draft` 下整本按 ai。键只做记录与消费：`maoying brief` 写作卡「本章状态」节照录原值、`maoying check` 校验越枚举（合法值 `author|ai`）；不进创作台面板快照（快照 chapters 无此键），状态机仍看 `status`。
 
 ### outlines/vXX-cXXX.md
 章纲：共创模式（`co-write` / `author-draft`）下大纲师给作者的创作输入，与章节文件一一对应（`outlines/v01-c005.md` ↔ `chapters/v01-c005.md`）。**纯 markdown、无 frontmatter**——作者会在任意编辑器里打开它，`---` 围栏只会碍眼（第 1 节「frontmatter 用围栏」的总约束不适用本目录）。六件内容写全：本章目标、节拍（场景推进顺序与情绪起伏）、出场角色（谁上场、各带什么目的）、需埋/需收伏笔（对照 foreshadows.yml 报 id）、与前章接口（从哪个钩子接）、章尾钩子——独立成 `## 钩子` 节（钩子类型 + 内容，类型对照 maoying-beat-pacing 的钩子类型库，写明下一章前提被什么改变）。颗粒度标准：作者拿着就能动笔，不写「参见大纲」式的空转。
@@ -139,6 +139,6 @@ total: {chapters: 21, words: 65210, accepted: 18}
 - `maoying index` 是第 3 节重建逻辑的人工兜底（主编的日常路径是让 lore 角色直接重建）；
 - `maoying export [dir]` 导出全书为 md / txt / epub（默认 md；`--out` 改输出目录，缺省 `<dir>/exports/`）；
 - `maoying brief [dir] <chapter>` 组装单章写作卡（章纲 + 前章结尾 + 出场角色卡 + 活跃伏笔）；`--out <文件>` 落盘，缺省打到 stdout；
-- `maoying check [dir]` 静态体检（不调模型）：frontmatter 完整性、枚举值（含 phase）、章号卷号一致、伏笔章号引用、伏笔超期未推进（planted 超 30 章无进展即 warn）、章纲钩子小节缺失、时间线年份、关系卡引用、AI 味统计（连续同式开头/比喻词密度/句长波动，命中即 warn），并把本节 phase 完成判据落成静态检查——phase 到 outline 及之后仍缺主角卡/核心反派卡/世界观条目/分卷规划，或有两张及以上角色卡而 relations.yml 为空，即报 error（判据不满足回上一阶段补齐）。
+- `maoying check [dir]` 静态体检（不调模型）：frontmatter 完整性与重复键（重复 warn）、枚举值（章节 status/writer、伏笔 status/source、记忆 category、线索 kind、project mode/phase）、章号卷号一致、伏笔账本全项（planted/resolved 章号引用存在性、id 重复、状态自洽——resolved 必填 resolved_chapter 且不得早于 planted、expected_resolve 只查格式不查存在性）、伏笔超期未推进（planted 超 30 章无进展即 warn）、volumes id 重复、章纲钩子小节缺失、时间线年份与 chapter 引用、记忆 category 与 source_chapter 引用、线索 kind 与 related_chapter 引用、关系 started/ended 引用、AI 味统计（连续同式开头/比喻词密度/句长波动，命中即 warn），并把本节 phase 完成判据落成静态检查——phase 到 outline 及之后仍缺主角卡/核心反派卡/世界观条目/分卷规划，或有两张及以上角色卡而 relations.yml 为空，即报 error（判据不满足回上一阶段补齐）。
 
 六者都零依赖，解析器只认本规范的两类形态（平键映射、顶层数组）；深度嵌套不在支持范围——这是规范约束的执行手段之一。

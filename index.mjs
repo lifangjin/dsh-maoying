@@ -32,7 +32,8 @@
  *   ≥ 0.2.1-rc.2 用 v2 AgentPreset 形状（agent.cordis.v2.yml，6 条声明行——
  *   主编 preset + 5 张角色 preset，委派行以 agentPreset 指向角色 preset，该版
  *   本起 dsh-tool-subagent 拒绝内联形状）。宿主升降级后重启即整块切换，无需
- *   重装插件（见 composeManagedRows）。
+ *   重装插件（见 composeManagedRows）。版本完全未知（五级探针全败）时不写
+ *   声明行、走 partial 自愈——绝不把可能已 ≥ 0.2.1-rc.2 的宿主声明成 v1 内联。
  *
  * YAML：解析与序列化都从 <home>/node_modules 惰性加载 yaml 包（dsh 自带 v2，
  *   本包零 npm 依赖）。agent.cordis.yml / agent.cordis.v2.yml 解析前先中和
@@ -51,7 +52,7 @@
  *   限额 JSON 读体、client.css 现读下发。
  */
 
-import { closeSync, copyFileSync, existsSync, mkdirSync, openSync, readdirSync, readFileSync, readSync, renameSync, unlinkSync, writeFileSync } from 'node:fs'
+import { closeSync, copyFileSync, existsSync, mkdirSync, openSync, readdirSync, readFileSync, readSync, renameSync, statSync, unlinkSync, writeFileSync } from 'node:fs'
 import { createHash } from 'node:crypto'
 import { pathToFileURL } from 'node:url'
 import { getVersionInfo } from './lib/version.mjs'
@@ -507,11 +508,15 @@ export function parsePresetRows(yaml, agentCordisV2Text) {
  *   - 宿主 ≥ 0.2.1-rc.2（hostRejectsInlineDelegation）→ 'v2'：解析
  *     agent.cordis.v2.yml，返回 6 条声明行（主编 preset + 5 张角色 preset，
  *     委派行 agentPreset 形状）；
- *   - 否则（含版本读不到的保守侧）→ 'v1'：现有单行组装路径原样（内联
- *     persona/toolFilter 形状）。
- * yaml 包不可用或组合源解析失败时 rows 返回 null（shape/hostVersion 照常带回，
- * reason 区分 'yaml-unavailable' / 'compose-failed'），由调用方走既有的「只落
- * 文件、跳过声明行并 warn、下次自愈」分支。
+ *   - 宿主 < 0.2.1-rc.2（确知旧版）→ 'v1'：现有单行组装路径原样（内联
+ *     persona/toolFilter 形状）；
+ *   - 版本完全未知（五级探针全败）→ 不组装：rows 返回 null、reason
+ *     'version-unknown'。真实宿主若 ≥ 0.2.1-rc.2，dsh-tool-subagent 会拒绝
+ *     v1 内联形状（五路委派全废、只能等探测成功才自愈），「不声明」比
+ *     「声明成 v1」安全；shape 仍保守记 'v1'（仅名义标签，本次不落盘）。
+ * yaml 包不可用或组合源解析失败时同样 rows 返回 null（shape/hostVersion 照常
+ * 带回，reason 区分 'yaml-unavailable' / 'compose-failed' / 'version-unknown'），
+ * 由调用方走既有的「只落文件、跳过声明行并 warn、下次自愈」分支。
  */
 /**
  * preset 声明行里的本地插件名换成 file:// 绝对地址。相对名按「声明方 baseUrl」
@@ -544,6 +549,14 @@ export function composeManagedRows(home, logger = console) {
   const hostVersion = readHostVersion(home)
   const useV2 = hostVersion !== null && hostRejectsInlineDelegation(hostVersion)
   const shape = useV2 ? 'v2' : 'v1'
+  // 版本完全未知（五级探针全败）时保持「不声明」而不是「声明成 v1 内联」：
+  // 若真实宿主 ≥ 0.2.1-rc.2，v1 内联声明行会被 dsh-tool-subagent 整批拒绝，
+  // 五路委派全废且探测成功前无法自愈。走既有的 partial 分支（预设文件照落、
+  // warn 留痕、下次宿主启动自动补写），与 yaml-unavailable 同一自愈语义。
+  // 确知宿主 < 0.2.1-rc.2 时 v1 内联仍照写（下方原路径不变）。
+  if (hostVersion === null) {
+    return { shape, rows: null, hostVersion, yaml: null, reason: 'version-unknown' }
+  }
   const yaml = loadYamlLib(home)
   if (!yaml) return { shape, rows: null, hostVersion, yaml: null, reason: 'yaml-unavailable' }
   try {
@@ -666,6 +679,39 @@ export function upsertManagedBlock(dshHome, blockText, { versionMarkerCurrent, l
     throw err
   }
   return span !== null ? 'updated' : 'created'
+}
+
+/**
+ * 清扫托管块临时件残留：upsertManagedBlock 在 writeFileSync 与 renameSync 之间
+ * 崩溃（kill -9 / 断电）时，`.cordis.patch.yml.tmp-<pid>` 会永远留在 dsh home。
+ * 仅在插件启动（apply 早期）顺带跑一次，纪律：
+ *   - 只认本插件的临时件命名（`.cordis.patch.yml.tmp-` 前缀 + 纯数字 pid 后缀，
+ *     与 upsertManagedBlock 的命名一字不差），其余文件一概不碰；
+ *   - mtime 超过 1 小时才删——正常写盘从建临时件到 rename 是毫秒级，1h 窗口
+ *     绝不误杀并发进程正在写的临时件；
+ *   - 全程自吞错（目录读不到 / 单个 stat/unlink 失败都跳过）：清扫是顺手卫生，
+ *     绝不能影响宿主启动，也不为它打日志刷屏。
+ * @returns {number} 本次删除的残留临时件个数（测试与观察用）
+ */
+export function sweepStaleManagedBlockTmp(dshHome, { now = Date.now(), maxAgeMs = 3_600_000 } = {}) {
+  let names
+  try {
+    names = readdirSync(dshHome)
+  } catch {
+    return 0 // home 不存在/读不到：无事可扫
+  }
+  let removed = 0
+  for (const name of names) {
+    if (!/^\.cordis\.patch\.yml\.tmp-\d+$/.test(name)) continue
+    try {
+      if (now - statSync(path.join(dshHome, name)).mtimeMs <= maxAgeMs) continue
+      unlinkSync(path.join(dshHome, name))
+      removed += 1
+    } catch {
+      /* 单个探测/删除失败跳过——下个启动周期再试 */
+    }
+  }
+  return removed
 }
 
 // ── 方法论技能落盘 ──────────────────────────────────────────────────────────
@@ -899,28 +945,37 @@ function json(res, status, payload) {
 }
 
 // 错误原文（可能带本机绝对路径）只进日志；回给浏览器的 message 先把插件
-// 安装根与 home 目录替换成 ~ 再说。
+// 安装根与目录锚点替换成 ~ 再说。
 const SANITIZE_HOME_DIR = path.resolve(os.homedir())
 const SANITIZE_PLUGIN_ROOT = PLUGIN_ROOT.replace(/[\\/]+$/, '')
+// DSH_HOME 可指向家目录外（如 /opt/dsh）——它的绝对路径与家目录同级敏感，
+// 同样不出门，进替换表。等于文件系统根时置 null 跳过（split('/') 会毁掉
+// 整条文本，宁可不脱敏也不能把响应毁成乱码）。
+const SANITIZE_DSH_HOME = (() => {
+  const resolved = path.resolve(resolveDshHome())
+  return resolved === path.sep ? null : resolved.replace(/[\\/]+$/, '')
+})()
 
 function sanitizeMessage(message) {
   let text = String(message ?? '')
-  // 先长后短：安装根通常是 home 的子路径，先替换更具体的
+  // 先长后短：安装根通常是 home/DSH_HOME 的子路径，先替换更具体的
   text = text.split(SANITIZE_PLUGIN_ROOT).join('~')
   text = text.split(SANITIZE_HOME_DIR).join('~')
+  if (SANITIZE_DSH_HOME !== null) text = text.split(SANITIZE_DSH_HOME).join('~')
   return text
 }
 
 /**
- * 递归脱敏：结构里所有字符串值过一遍 sanitizeMessage（绝对路径换 ~）。host-debug
+ * 递归脱敏：结构里所有字符串值过一遍 sanitize（默认模块级 sanitizeMessage，
+ * 可传路由层的 sanitizeWithRoots 把已注册工作区根并入替换表）。host-debug
  * 响应用——trace.via / runtime.argv / execPath / cwd 等带本机绝对路径的字段，
  * 与错误 message 同一纪律：诊断信息照给，本机路径不出门。
  */
-function sanitizeDeep(value) {
-  if (typeof value === 'string') return sanitizeMessage(value)
-  if (Array.isArray(value)) return value.map(sanitizeDeep)
+function sanitizeDeep(value, sanitize = sanitizeMessage) {
+  if (typeof value === 'string') return sanitize(value)
+  if (Array.isArray(value)) return value.map((v) => sanitizeDeep(v, sanitize))
   if (value !== null && typeof value === 'object') {
-    return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, sanitizeDeep(v)]))
+    return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, sanitizeDeep(v, sanitize)]))
   }
   return value
 }
@@ -964,13 +1019,37 @@ export async function registerCreatorRoutes(ctx) {
   const trustedHostsOf = () => {
     try { return ctx.get('webRuntime')?.trustedHosts ?? [] } catch { return [] }
   }
+  // 纵深加固（本文件可达处）：模块级 sanitizeMessage 的替换表只认 homedir /
+  // 插件根 / DSH_HOME；已注册工作区根是 ctx 级事实（registry 可枚举、运行时
+  // 可增删），且 sanitizeMessage 定义在本文件而非不可改的 panel-core.mjs，
+  // 故在路由层包一层把注册根并入替换表——工作区根落在家目录外时，host-debug
+  // trace 与错误 message 里的绝对路径同样不出门。只包本前缀路由内的使用点；
+  // registry 读不到按「无根可换」继续，脱敏层绝不炸请求（围栏内仅回环受信
+  // 客户端可见，此层属纵深而非唯一防线）。
+  const workspaceRoots = () => {
+    try {
+      return (ctx.workspaceRegistry?.list?.() ?? [])
+        .map((entry) => (typeof entry?.path === 'string' && entry.path.trim() !== '' ? path.resolve(entry.path) : null))
+        .filter((root) => root !== null && root !== path.sep)
+        .sort((a, b) => b.length - a.length) // 先长后短：嵌套根先替换更具体的
+    } catch {
+      return []
+    }
+  }
+  const sanitizeWithRoots = (message) => {
+    let text = sanitizeMessage(message)
+    for (const root of workspaceRoots()) text = text.split(root).join('~')
+    return text
+  }
 
   return registerPrefixRouteWithRetry(webServer, {
     kind: 'prefix',
     path: '/api/maoying',
     handler: async (req, res) => {
       if (!isTrustedApiRequest(req, trustedHostsOf())) {
-        json(res, 403, { error: 'forbidden' })
+        // 错误形状契约（本文件 §路由要点：「错误形状统一 { ok: false, error }」）：
+        // 围栏 403 也带 ok:false，客户端形状检查不必对这一条网开一面。
+        json(res, 403, { ok: false, error: 'forbidden' })
         return
       }
       try {
@@ -991,7 +1070,7 @@ export async function registerCreatorRoutes(ctx) {
             res.end(css)
           } catch (err) {
             ctx.logger?.warn?.('maoying 创作台: client.css 读取失败: ' + String(err?.message ?? err))
-            json(res, 500, { ok: false, error: sanitizeMessage(`client.css 不可用: ${err?.message ?? err}`) })
+            json(res, 500, { ok: false, error: sanitizeWithRoots(`client.css 不可用: ${err?.message ?? err}`) })
           }
           return
         }
@@ -1016,7 +1095,7 @@ export async function registerCreatorRoutes(ctx) {
           // 安全边界见 lib/self-update.mjs）。可预期的失败（dev-link /
           // unsupported-layout / profile-missing / no-target / pnpm-missing /
           // 超时 / 退出码非零 nonzero）统一 HTTP 200 + ok:false，kind 给客户端
-          // 分流、message 经 sanitizeMessage 脱敏后透出；成功带 restartRequired:
+          // 分流、message 经 sanitizeWithRoots 脱敏后透出；成功带 restartRequired:
           // true——装完的只是磁盘上的新包，运行中的进程仍是旧代码，必须重启
           // DeepSeek 才生效，客户端文案必须照实转述。本地已不落后线上时短路
           // kind: 'up-to-date'（不装 profile）。两个成功路径都顺带全局 CLI：
@@ -1031,7 +1110,7 @@ export async function registerCreatorRoutes(ctx) {
               restartRequired: true, globalCli: r.globalCli ?? null,
             })
           } else {
-            json(res, 200, { ok: false, kind: r.kind, error: sanitizeMessage(r.message ?? r.kind) })
+            json(res, 200, { ok: false, kind: r.kind, error: sanitizeWithRoots(r.message ?? r.kind) })
           }
           return
         }
@@ -1069,18 +1148,18 @@ export async function registerCreatorRoutes(ctx) {
               registryDump.presets = jsonSafe(rows)
             }
           } catch (e) { registryDump.error = String(e?.message ?? e) }
-          // 出口统一过 sanitizeDeep：trace.via / argv / execPath / cwd 带本机
-          // 绝对路径，诊断照给、路径脱敏（与错误 message 同一纪律）。
+          // 出口统一过 sanitizeDeep + 工作区根扩展表：trace.via / argv / execPath /
+          // cwd 带本机绝对路径，诊断照给、路径脱敏（与错误 message 同一纪律）。
           json(res, 200, {
             ok: true,
             hostVersion: dbg.version,
-            trace: sanitizeDeep(dbg.trace),
+            trace: sanitizeDeep(dbg.trace, sanitizeWithRoots),
             shape,
             registry: registryDump,
             runtime: {
-              argv: sanitizeDeep(process.argv),
-              execPath: sanitizeMessage(process.execPath),
-              cwd: sanitizeMessage(process.cwd()),
+              argv: sanitizeDeep(process.argv, sanitizeWithRoots),
+              execPath: sanitizeWithRoots(process.execPath),
+              cwd: sanitizeWithRoots(process.cwd()),
               electron: process.versions?.electron ?? null,
               node: process.version,
             },
@@ -1269,7 +1348,7 @@ export async function registerCreatorRoutes(ctx) {
         if (err?.responded) return
         json(res, Number.isInteger(err?.statusCode) ? err.statusCode : 500, {
           ok: false,
-          error: sanitizeMessage(err?.message ?? String(err)),
+          error: sanitizeWithRoots(err?.message ?? String(err)),
         })
       }
     },
@@ -1284,7 +1363,7 @@ export async function registerCreatorRoutes(ctx) {
  *   2) .installed-version 标记（内容与当前版本一致即不重写）；
  *   3) 方法论技能落盘到 <home>/skills/maoying-*（不依赖 yaml，独立可失败）；
  *   4) home patch 托管块（依赖 yaml；形态随宿主版本，见 composeManagedRows；
- *      yaml 缺席或组合源坏时跳过并 warn，下次启动自愈）。
+ *      yaml 缺席、组合源坏或宿主版本探测全败时跳过并 warn，下次启动自愈）。
  * 返回 { status, home, presetDir, copied, skillsCopied, blockAction, reason,
  * shape, hostVersion }，status 取 'ok'（全链路完成）| 'partial'（托管块未写，
  * 原因见 reason）；shape 为本次所选委派行形态（'v1' | 'v2'）；skillsCopied 为
@@ -1335,8 +1414,12 @@ export function ensurePresetInstalled(ctx = {}) {
       composed.reason === 'yaml-unavailable'
         ? 'maoying-installer: <home>/node_modules 下找不到 yaml 包，无法解析预设组合——' +
             '预设文件已复制，但 cordis.patch.yml 声明行本次跳过，下次宿主启动自动补写'
-        : 'maoying-installer: 预设组合源解析失败——预设文件已复制，但 cordis.patch.yml 声明行本次跳过，' +
-            '修复后下次宿主启动自动补写（详见上方 warn）',
+        : composed.reason === 'version-unknown'
+          ? 'maoying-installer: 宿主版本探测全败，无法安全判定委派行形状' +
+              '（误写 v1 内联会被 0.2.1-rc.2+ 宿主拒绝、五路委派全废）——' +
+              '预设文件已复制，但 cordis.patch.yml 声明行本次跳过，下次宿主启动自动补写'
+          : 'maoying-installer: 预设组合源解析失败——预设文件已复制，但 cordis.patch.yml 声明行本次跳过，' +
+              '修复后下次宿主启动自动补写（详见上方 warn）',
     )
     return {
       status: 'partial',
@@ -1382,6 +1465,13 @@ export function ensurePresetInstalled(ctx = {}) {
  */
 export function apply(ctx = {}, _config = {}) {
   const logger = ctx?.logger ?? console
+  // 启动顺带清扫上次崩溃可能残留的托管块临时件（见 sweepStaleManagedBlockTmp；
+  // 自吞错、只认本插件命名前缀且 mtime>1h，绝不影响启动）。
+  try {
+    sweepStaleManagedBlockTmp(resolveDshHome())
+  } catch {
+    /* 防御性兜底：函数本身不抛，这里再兜一层 */
+  }
   try {
     ensurePresetInstalled({ logger })
   } catch (error) {

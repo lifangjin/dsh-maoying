@@ -1,9 +1,10 @@
 /**
  * 安装器双形态测试（假 home + 假宿主版本，全程 /tmp，不碰真实 ~/.dsh）：
  *
- *   · 版本矩阵：0.2.0-rc.2 / 0.2.1-rc.1 / 版本读不到 → v1（1 行、内联 persona、
- *     无 agentPreset）；0.2.1-rc.2 / 0.2.1 / 0.3.0 → v2（6 行 preset、委派行带
- *     agentPreset、无 persona/toolFilter）；
+ *   · 版本矩阵：0.2.0-rc.2 / 0.2.1-rc.1 → v1（1 行、内联 persona、无
+ *     agentPreset）；版本完全未知（五级探针全败）→ partial 不写块（防把可能
+ *     已升级 ≥0.2.1-rc.2 的宿主声明成 v1 内联、五路委派全废）；0.2.1-rc.2 /
+ *     0.2.1 / 0.3.0 → v2（6 行 preset、委派行带 agentPreset、无 persona/toolFilter）；
  *   · 同一 home 先 v1 后改宿主版本重跑 → 托管块整块替换为 v2，反向降级亦然；
  *     块外用户内容（块前 + 块后）在两次切换中逐字节保留；同版本二跑 skipped；
  *   · 两种形态的托管块产物都过 YAML 解析（借 /tmp/yamlcheck 的 yaml 包，与现有
@@ -18,7 +19,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { createRequire } from 'node:module'
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, utimesSync, writeFileSync } from 'node:fs'
 import { spawnSync } from 'node:child_process'
 import os from 'node:os'
 import { createHash } from 'node:crypto'
@@ -27,7 +28,7 @@ import { fileURLToPath } from 'node:url'
 
 const PLUGIN_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 
-const { MANAGED_BEGIN, MANAGED_END, composeManagedRows, ensurePresetInstalled, hostRejectsInlineDelegation, readHostVersion, stringifyManagedBlock } =
+const { MANAGED_BEGIN, MANAGED_END, composeManagedRows, ensurePresetInstalled, hostRejectsInlineDelegation, readHostVersion, stringifyManagedBlock, sweepStaleManagedBlockTmp } =
   await import('../index.mjs')
 
 // ── 假 home 与假宿主版本 ─────────────────────────────────────────────────────
@@ -163,18 +164,50 @@ test('宿主 0.2.1-rc.2 / 0.2.1 / 0.3.0 → v2：托管块 6 行 preset，委派
   }
 })
 
-test('宿主 0.2.1-rc.1 → v1；版本读不到 → 保守侧 v1', (t) => {
+test('宿主 0.2.1-rc.1（确知旧版）→ v1 内联照写', (t) => {
   skipWithoutYamlStaging(t)
-  for (const version of ['0.2.1-rc.1', null]) {
-    const home = makeFakeHome({ hostVersion: version })
-    withHome(home, () => {
-      const result = ensurePresetInstalled({ logger: makeLogger().logger })
-      assert.equal(result.status, 'ok', String(version))
-      assert.equal(result.shape, 'v1', String(version))
-      const { doc } = readManagedBlock(home, yamlOf(home))
-      assert.equal(doc[0].insert.length, 1, String(version))
-    })
-  }
+  const home = makeFakeHome({ hostVersion: '0.2.1-rc.1' })
+  withHome(home, () => {
+    const result = ensurePresetInstalled({ logger: makeLogger().logger })
+    assert.equal(result.status, 'ok')
+    assert.equal(result.shape, 'v1')
+    const { doc } = readManagedBlock(home, yamlOf(home))
+    assert.equal(doc[0].insert.length, 1)
+  })
+})
+
+test('版本完全未知（五级探针全败）→ partial：不写 v1 内联托管块，走自愈分支', (t) => {
+  skipWithoutYamlStaging(t)
+  const home = makeFakeHome({ hostVersion: null }) // 全败夹具：home 不放假宿主包
+  withHome(home, () => {
+    // 钉死 argv[1]（对照本文件 asar 用例的写法）：探针①②不再受外层目录里
+    // 碰巧存在的 @deepseek-ai/dsh 包干扰，「全败」与环境解耦、确定性成立。
+    const prevArgv1 = process.argv[1]
+    process.argv[1] = path.join(home, 'unrelated-entry.mjs')
+    try {
+      const { lines, logger } = makeLogger()
+      const result = ensurePresetInstalled({ logger })
+      assert.equal(readHostVersion(home), null, '夹具必须真的全败（否则本用例没测到目标分支）')
+      assert.equal(result.status, 'partial')
+      assert.equal(result.reason, 'version-unknown')
+      assert.equal(result.shape, 'v1', 'shape 仅保守的名义标签（本次不落盘）')
+      assert.equal(existsSync(path.join(home, 'cordis.patch.yml')), false, '版本未知绝不写 v1 内联托管块')
+      assert.ok(existsSync(path.join(home, '.agent-presets', 'maoying', 'preset.yml')), '预设文件照常落盘')
+      assert.equal(lines.warn.filter((l) => l.includes('宿主版本探测全败')).length, 1, '应恰好一条版本未知 warn')
+
+      // 自愈语义：探测恢复（= 模拟下次宿主启动探针命中）后照常写块。argv[1]
+      // 直接钉进假宿主包目录，走 anchorVersion 的裸 fs 读——绕开 CJS require
+      // 的进程级（负）缓存（对照下方 yaml 自愈用例必须开子进程的同款限制）。
+      writeHostVersion(home, '0.2.1-rc.2')
+      process.argv[1] = path.join(home, 'node_modules', '@deepseek-ai', 'dsh', 'entry.mjs')
+      const healed = ensurePresetInstalled({ logger: makeLogger().logger })
+      assert.equal(healed.status, 'ok')
+      assert.equal(healed.shape, 'v2')
+      assert.equal(readManagedBlock(home, yamlOf(home)).doc[0].insert.length, 6)
+    } finally {
+      process.argv[1] = prevArgv1
+    }
+  })
 })
 
 test('readHostVersion：argv[1] 锚定真实宿主入口，优先于陈旧的 home 全局安装', () => {
@@ -412,3 +445,28 @@ const CHILD_RUNNER = `
   const result = ensurePresetInstalled({ logger: { info() {}, warn: (m) => warns.push(String(m)) } })
   console.log(JSON.stringify({ ...result, warns }))
 `
+
+// ── 启动清扫：崩溃残留的托管块临时件 ────────────────────────────────────────
+
+test('sweepStaleManagedBlockTmp：只删本插件命名且 mtime>1h 的临时件，新鲜/无关文件保留', () => {
+  const home = mkdtempSync(path.join(os.tmpdir(), 'maoying-sweep-'))
+  cleanup.push(home)
+  const stale = path.join(home, '.cordis.patch.yml.tmp-111') // 本插件命名 + 超龄 → 删
+  const fresh = path.join(home, '.cordis.patch.yml.tmp-222') // 本插件命名 + 新鲜 → 留（防误杀并发写）
+  const nonPid = path.join(home, '.cordis.patch.yml.tmp-abc') // 后缀非纯数字 → 不是本插件命名
+  const noDot = path.join(home, 'cordis.patch.yml.tmp-333') // 缺前导点 → 别的命名空间
+  const unrelated = path.join(home, 'user-file.yml') // 无关用户文件 → 绝不碰
+  for (const p of [stale, fresh, nonPid, noDot, unrelated]) writeFileSync(p, 'x', 'utf8')
+  const twoHoursAgo = new Date(Date.now() - 2 * 3_600_000)
+  utimesSync(stale, twoHoursAgo, twoHoursAgo)
+
+  assert.equal(sweepStaleManagedBlockTmp(home), 1, '应恰好删掉 1 个超龄本插件临时件')
+  assert.equal(existsSync(stale), false, '超龄残留应删除')
+  assert.equal(existsSync(fresh), true, '1h 内的临时件可能是并发写手，不删')
+  assert.equal(existsSync(nonPid), true, '非 pid 后缀不认')
+  assert.equal(existsSync(noDot), true, '缺前导点不是本插件命名')
+  assert.equal(existsSync(unrelated), true, '无关文件绝不碰')
+
+  // home 不存在/读不到：静默 0，绝不抛
+  assert.equal(sweepStaleManagedBlockTmp(path.join(home, 'no-such-dir')), 0)
+})

@@ -30,6 +30,7 @@
     "index.mjs",
     "bin/",
     "lib/",
+    "scripts/",
     "presets/",
     "skills/",
     "templates/",

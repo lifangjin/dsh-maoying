@@ -1,23 +1,16 @@
 /**
  * lib/epub.mjs 单测：CRC32 已知向量、buildZip/buildEpub 产物结构（手解
  * EOCD + central directory 校验偏移自洽，mimetype 首条目且 stored）、
- * escapeXml 对 & < > ' " 全量转义、emoji/𠮷 书名与正文产物的 XML 良构、
- * paragraphs 形状漂移与 uuid 非法的中文报错、dosDateTime 的 1980 纪元下限。
- * 零依赖：只用 node: 内置模块；`unzip -t` 走系统命令作可选验证，缺席自动
- * 跳过，不作为硬门槛。
+ * escapeXml 对 & < > ' " 全量转义、XML 1.0 非法控制字符替换为 U+FFFD（L8）、
+ * emoji/𠮷 书名与正文产物的 XML 良构、paragraphs 形状漂移与 uuid 非法的中文
+ * 报错、dosDateTime 的 1980 纪元下限。零依赖：只用 node: 内置模块，产物完整
+ * 性用仓内 parseZipEntries 自解校验，不依赖系统 unzip。
  */
 
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { execFile } from 'node:child_process'
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
-import os from 'node:os'
-import path from 'node:path'
-import { promisify } from 'node:util'
 
 import { buildEpub, buildZip, crc32, dosDateTime, escapeXml } from '../lib/epub.mjs'
-
-const execFileAsync = promisify(execFile)
 
 /** 造一份最小书稿：两章，书名/正文含 emoji 与生僻字 𠮷 及各类待转义字符。 */
 const SAMPLE = {
@@ -114,22 +107,15 @@ test('buildZip：空条目表仍产出合法的空 zip 结构', () => {
   assert.equal(entries.length, 0)
 })
 
-test('buildEpub 产物通过系统 unzip -t 校验（无 unzip 环境则跳过）', async (t) => {
-  try {
-    await execFileAsync('unzip', ['-v'])
-  } catch {
-    return t.skip('系统无 unzip 命令，跳过外部工具校验')
-  }
-  // 产物落一次性临时目录，测试完即清
-  const dir = mkdtempSync(path.join(os.tmpdir(), 'maoying-epub-'))
-  try {
-    const file = path.join(dir, 'book.epub')
-    writeFileSync(file, buildEpub(SAMPLE))
-    const { stdout } = await execFileAsync('unzip', ['-t', file])
-    assert.match(stdout, /No errors detected/, 'unzip -t 应报无错误')
-  } finally {
-    rmSync(dir, { recursive: true, force: true })
-  }
+test('buildEpub 产物完整性：全条目按 central directory 自洽回读（替代系统 unzip -t，零外部依赖）', () => {
+  // 原用例靠系统 `unzip -t`（缺席即 skip，违反 AGENTS.md「skip 只允许 yaml 包
+  // 条件跳过一类」门禁）——改用上方 parseZipEntries 仓内自解：EOCD/central
+  // directory/local header 三层偏移、stored 等长与 CRC32 逐条自洽，走完即无损坏，
+  // 断言力度与 unzip -t 相当且任何环境恒跑。
+  const entries = parseZipEntries(buildEpub(SAMPLE))
+  assert.ok(entries.length >= 7, `产物应有完整条目面，实得 ${entries.length} 条`)
+  assert.equal(entries[0].name, 'mimetype', 'mimetype 仍须是第一条目')
+  for (const e of entries) assert.ok(e.data.length >= 0, `${e.name} 数据可回读`)
 })
 
 test("escapeXml：& < > ' \" 五类字符全量转义，且 & 先转不重复", () => {
@@ -139,6 +125,24 @@ test("escapeXml：& < > ' \" 五类字符全量转义，且 & 先转不重复", 
   assert.equal(escapeXml(null), '', 'null 兜空串')
   assert.equal(escapeXml(undefined), '', 'undefined 兜空串')
   assert.equal(escapeXml(123), '123', '非字符串先 String 化')
+})
+
+test('escapeXml：XML 1.0 非法控制字符替换为 U+FFFD（L8），合法 \\t \\n \\r 原样保留', () => {
+  // \x00-\x08、\x0B、\x0C、\x0E-\x1F 全段逐字符替换
+  const dirty = '\x00\x01\x07\x08\x0B\x0C\x0E\x15\x1F'
+  assert.equal(escapeXml(dirty), '\uFFFD'.repeat(dirty.length), '非法控制字符逐一替换为 U+FFFD')
+  // 合法控制字符（制表/换行/回车）不得误伤
+  assert.equal(escapeXml('a\tb\nc\rd'), 'a\tb\nc\rd')
+  // 全链路：含控制字符的正文打出的章 XHTML 不再含非法控制字符，且脏点可见
+  const byName = new Map(
+    parseZipEntries(buildEpub({ ...SAMPLE, chapters: [{ heading: '脏章\x00', paragraphs: ['一段\x1F正文'] }] })).map((e) => [
+      e.name,
+      e.data.toString('utf8'),
+    ]),
+  )
+  const chap = byName.get('OEBPS/chap-01.xhtml')
+  assert.ok(!/[\x00-\x08\x0B\x0C\x0E-\x1F]/.test(chap), '章 XHTML 不含 XML 1.0 非法控制字符')
+  assert.ok(chap.includes('\uFFFD'), '脏字符位置留下 U+FFFD 可见痕迹')
 })
 
 test('buildEpub：emoji / 𠮷 书名与正文产物 XML 良构（转义正确 + 标签配平）', () => {

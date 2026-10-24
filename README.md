@@ -158,7 +158,7 @@ rm -rf "${DSH_HOME:-$HOME/.dsh}/skills/"maoying-*
 - **DSH 0.1.7 – 0.2.1-rc.1 → v1 内联形状**：5 个角色委派行直接内联 persona 与 toolFilter，托管块 1 条声明行。
 - **DSH 0.2.1-rc.2+ → v2 AgentPreset 形状**：该版本起 dsh-tool-subagent 拒绝内联 persona/toolFilter，插件改用 [presets/maoying/agent.cordis.v2.yml](presets/maoying/agent.cordis.v2.yml)——托管块写 6 条声明行（主编 preset + 大纲师/写手/审校/设定管理员/素材调研员 5 张角色 preset），主编委派行以 `agentPreset` 指向角色 preset，角色的工具面由 preset 里的实体工具行承载（审校只读、考据带联网检索）。
 - **角色预设会出现在预设选择器**（宿主对预设没有隐藏机制），name 带「（内部）」标明：日常写作由主编委派自动选用，不经主编、想单独开一个写手/考据会话时直接选中即可。
-- 两种形状的 persona 文本同源逐字一致（[test/composition.test.mjs](test/composition.test.mjs) 逐字节把关）；宿主版本读不到时保守按 v1 处理。
+- 两种形状的 persona 文本同源逐字一致（[test/composition.test.mjs](test/composition.test.mjs) 逐字节把关）；宿主版本完全未知（五级探针全败）时不写声明行、预设文件照落走 partial 自愈，绝不把可能已 ≥0.2.1-rc.2 的宿主声明成 v1 内联（下次启动版本可读时自动补写）。
 - ≤0.1.6 的目录扫描轨道：不做（宿主已淘汰）。
 
 ## 许可

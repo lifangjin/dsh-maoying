@@ -30,6 +30,10 @@ function makeTmpRoot(prefix) {
 const TEST_HOME = makeTmpRoot('maoying-home-')
 process.env.DSH_HOME = TEST_HOME
 
+// /tmp/yamlcheck staging 约定（AGENTS.md）：测试需要真 yaml 包时从这里借；
+// 缺席时依赖它的用例优雅 skip（skip 只允许 yaml 包条件跳过一类）。
+const YAML_STAGING = '/tmp/yamlcheck/node_modules/yaml'
+
 test.after(() => {
   if (PREV_DSH_HOME === undefined) delete process.env.DSH_HOME
   else process.env.DSH_HOME = PREV_DSH_HOME
@@ -271,8 +275,18 @@ test('parseStateSnapshot：project_hash 为 project.yml 原文 sha256，动一�
 })
 
 test('parseStateSnapshot：yaml 包可用时真解析（条件执行，本机借不到就跳过）', (t) => {
+  // TEST_HOME 初始为空临时目录，loadYamlLib 恒 null——先按下方「生产默认路径」
+  // 用例的同款 staging 把 /tmp/yamlcheck 的 yaml 包搬进 TEST_HOME 再借（快照
+  // 拷贝发生在文件尾部的旧布局曾让本用例恒 skip、断言成死代码）；staging
+  // 缺席如实 skip，借不到 yaml 不算测试环境错（AGENTS.md 门禁：skip 只允许
+  // yaml 包条件跳过一类）。
+  if (!existsSync(YAML_STAGING)) {
+    return t.skip('本机没有 /tmp/yamlcheck 的 yaml 包（npm install --no-save --prefix /tmp/yamlcheck yaml@2 可补）')
+  }
+  mkdirSync(path.join(TEST_HOME, 'node_modules'), { recursive: true })
+  cpSync(YAML_STAGING, path.join(TEST_HOME, 'node_modules', 'yaml'), { recursive: true })
   const yamlLib = loadYamlLib(TEST_HOME)
-  if (!yamlLib) return t.skip('本机无可借的 yaml 包')
+  if (!yamlLib) return t.skip('staging 拷贝后 loadYamlLib 仍借不到 yaml 包')
   const root = makeTmpRoot()
   const novel = buildSampleNovel(root)
   const snap = parseStateSnapshot(novel, { yamlLib })
@@ -284,6 +298,55 @@ test('parseStateSnapshot：yaml 包可用时真解析（条件执行，本机借
   assert.deepEqual(snap.volumes, [{ id: 'v01', title: '第一卷 北境风雪', summary: '雪灾揭幕，玉佩现世。', chapters: '001-002' }])
   assert.equal(snap.research[0].description, '封冻八个月的镇子靠凿冰取水。')
   assert.deepEqual(snap.research[0].sources, ['https://example.com/fengsu'])
+})
+
+test('parseStateSnapshot：真 yaml 解析失败降级极简解析且 warning 在案（H1），flat 散键告警同并入（H2）', () => {
+  const root = makeTmpRoot()
+  const novel = buildSampleNovel(root)
+  // 未闭合 flow 序列：真 yaml 必炸的畸形文件（旧实现静默吞掉、warnings 为空）
+  writeFileSync(path.join(novel, 'foreshadows.yml'), '- id: f1\n  tags: [a, b\n- id: f2\n  title: 未闭合序列后的条目\n', 'utf8')
+  // 桩 yamlLib：parse 恒炸，确定性地复现「真解析失败」分支（不依赖本机 staging）
+  const boom = { parse: () => { throw new Error('bad flow sequence') } }
+  const snap = parseStateSnapshot(novel, { yamlLib: boom })
+  assert.ok(
+    snap.warnings.some((w) => w.includes('foreshadows.yml') && w.includes('yaml 解析失败') && w.includes('bad flow sequence')),
+    `解析失败应记 warning（文件名+一句话错误），实得 ${JSON.stringify(snap.warnings)}`,
+  )
+  // 降级不丢文件级既有告警：坏目录（characters/broken.md）与新增告警并存
+  assert.ok(snap.warnings.some((w) => w.includes('characters/broken.md') && w.includes('读取失败')), '文件级既有告警不得被丢')
+  // 宽容解析保可用性：条目照常出快照，但「坏过」已在案
+  assert.equal(snap.foreshadows.length, 2)
+  // 本机借得到真 yaml（前置用例已 staging）时，真解析路径同样出 warning
+  const real = loadYamlLib(TEST_HOME)
+  if (real) {
+    assert.ok(
+      parseStateSnapshot(novel, { yamlLib: real }).warnings.some((w) => w.includes('foreshadows.yml') && w.includes('yaml 解析失败')),
+      '真 yaml 包解析同一畸形文件也应记 warning',
+    )
+  }
+
+  // H2：yamlLib 缺席走纯回退路径时，数组 yml 里零缩进散键被丢弃并告警（挂文件名）
+  writeFileSync(path.join(novel, 'volumes.yml'), '- id: v01\n  title: 第一卷\nstatus: 手滑残留的顶层散键\n', 'utf8')
+  const snap2 = parseStateSnapshot(novel, { yamlLib: null })
+  assert.ok(
+    snap2.warnings.some((w) => w.includes('volumes.yml') && w.includes('零缩进散键') && w.includes('已丢弃')),
+    `散键告警应并入 warnings，实得 ${JSON.stringify(snap2.warnings)}`,
+  )
+  // 散键没有并进任何条目：卷条目仍是契约四键，残留 status 不复存在
+  assert.deepEqual(snap2.volumes, [{ id: 'v01', title: '第一卷', summary: null, chapters: null }])
+})
+
+test('parseStateSnapshot：.MD 大写后缀与 CLI 同口径收录（M10）', () => {
+  const root = makeTmpRoot()
+  const novel = buildSampleNovel(root)
+  // 章纲与实体卡目录用大写后缀：collectOutlines / collectMdEntities 应照收
+  writeFileSync(path.join(novel, 'outlines', 'v01-c002.MD'), '# 第二章 章纲\n\n- 本章目标：冻河尸语。\n\n## 钩子\n\n雪又下了。\n', 'utf8')
+  writeFileSync(path.join(novel, 'world', 'SOUTH-REALM.MD'), '---\ncategory: 地点\n---\n\n南境：与北境隔冻河相望。\n', 'utf8')
+  const snap = parseStateSnapshot(novel, { yamlLib: null })
+  assert.ok(snap.outlines.some((o) => o.file === 'v01-c002.MD'), `outlines 应收录 .MD，实得 ${JSON.stringify(snap.outlines.map((o) => o.file))}`)
+  assert.ok(snap.world.some((w) => w.file === 'SOUTH-REALM.MD'), `world 应收录 .MD，实得 ${JSON.stringify(snap.world.map((w) => w.file))}`)
+  // CLI 侧（novel-parse listMdFiles）对同一文件口径一致——chapters/ 里的大写
+  // 后缀章由 cli-brief-check.test.mjs 的 M10 用例覆盖，这里只钉面板侧
 })
 
 // ── 写操作三件套 ────────────────────────────────────────────────────────────
@@ -790,8 +853,6 @@ test('PanelError 带 statusCode（路由层按它回状态码）', () => {
 })
 
 // ── 生产默认 yaml 真解析路径（staging 缺席优雅 skip，对照 composition.test.mjs）──
-
-const YAML_STAGING = '/tmp/yamlcheck/node_modules/yaml'
 
 test('生产默认路径：不传 options 时从 DSH_HOME 惰性借 yaml 包，readProject / parseFrontmatterMeta / collectArrayYml 走真解析', (t) => {
   if (!existsSync(YAML_STAGING)) return t.skip('本机没有 /tmp/yamlcheck 的 yaml 包（npm install --no-save --prefix /tmp/yamlcheck yaml@2 可补）')

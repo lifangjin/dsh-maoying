@@ -555,6 +555,27 @@ test('解析层杂项：转义引号注释、类型漂移落值、扩展B计数�
   })
 })
 
+test('parseFlatYamlArray：顶层数组里零缩进散键行丢弃并告警（H2），顶层平键形态不受影响', () => {
+  // 旧实现把散键静默并进前一条目（`- a: 1\nkey: 2` → [{a:1,key:2}]）
+  const warns = []
+  assert.deepEqual(parseFlatYamlArray('- a: 1\nkey: 2', (w) => warns.push(w)), [{ a: 1 }])
+  assert.equal(warns.length, 1)
+  assert.ok(warns[0].includes('第 2 行') && warns[0].includes('key: 2') && warns[0].includes('已丢弃'), warns[0])
+  // 散键不得覆盖前条已有字段（手改残留键覆盖 status 的原始事故形态）
+  const warns2 = []
+  assert.deepEqual(
+    parseFlatYamlArray('- id: fs-001\n  status: planted\nstatus: resolved\n', (w) => warns2.push(w)),
+    [{ id: 'fs-001', status: 'planted' }],
+  )
+  assert.equal(warns2.length, 1)
+  // 顶层纯键值是合法映射形态：零告警、解析不变（H2 只管数组分支）
+  const quiet = []
+  assert.deepEqual(parseFlatYamlArray('title: 雪葬长夜\nphase: writing', (w) => quiet.push(w)), { title: '雪葬长夜', phase: 'writing' })
+  assert.deepEqual(quiet, [])
+  // 不传 onWarn 的旧调用点行为不变（bin 侧 parseSimpleYaml 等）
+  assert.deepEqual(parseFlatYamlArray('- a: 1\nkey: 2'), [{ a: 1 }])
+})
+
 // ── 解析层：写作卡 ──────────────────────────────────────────────────────────
 
 test('buildBrief：全料样例拼出完整写作卡', () => {
@@ -668,6 +689,19 @@ test('buildBrief：文件名 / stem /「卷-章」/ 裸章号写法等价，硬�
     const noProject = buildBrief(path.join(dir, 'no-such-project'), 'v01-c001')
     assert.equal(noProject.ok, false)
     assert.ok(noProject.reason.includes('找不到'))
+  })
+})
+
+test('buildBrief：volumes.yml 零缩进散键告警并入 warnings（H2）', () => {
+  withWorkspace('brief-stray-key', (dir) => {
+    write(path.join(dir, 'chapters/v01-c001.md'), chapterFm({ num: 1 }) + '正文。\n')
+    write(path.join(dir, 'volumes.yml'), '- id: v01\n  title: 第一卷\nsummary: 手滑残留的散键\n')
+    const brief = buildBrief(dir, 'v01-c001')
+    assert.equal(brief.ok, true)
+    assert.ok(
+      brief.warnings.some((w) => w.includes('volumes.yml') && w.includes('已丢弃')),
+      `散键告警应并入 warnings，实得 ${JSON.stringify(brief.warnings)}`,
+    )
   })
 })
 
@@ -1035,6 +1069,87 @@ test('BOM 文件：frontmatter 不因 \\uFEFF 静默失效', () => {
     write(path.join(dir, 'chapters/v01-c007.md'), text)
     const result = checkProject(dir)
     assert.deepEqual(result.problems, [])
+  })
+})
+
+test('checkProject：账本 yml 零缩进散键给 warn（H2 并入 problems 通道）', () => {
+  withWorkspace('check-stray-key', (dir) => {
+    write(path.join(dir, 'chapters/v01-c001.md'), chapterFm({ num: 1 }) + '正文。\n')
+    write(
+      path.join(dir, 'foreshadows.yml'),
+      '- id: fs-001\n  status: planted\n  priority: low\n  planted_chapter: v01-c001\ntitle: 顶层散键残留\n',
+    )
+    const result = checkProject(dir)
+    const hit = result.problems.find((p) => p.level === 'warn' && p.file === 'foreshadows.yml')
+    assert.ok(hit && hit.message.includes('title: 顶层散键残留'), `散键应给 warn，实得 ${JSON.stringify(result.problems)}`)
+    // 散键未并进条目：伏笔账本仍只有原条目自身
+    assert.equal(result.summary.foreshadows, 1)
+  })
+})
+
+test('checkProject：volumes.yml id 重复报 error（M8：同 id 卷会把章节重复计入）', () => {
+  withWorkspace('check-vol-dup', (dir) => {
+    write(path.join(dir, 'chapters/v01-c001.md'), chapterFm({ num: 1 }) + '正文。\n')
+    write(
+      path.join(dir, 'volumes.yml'),
+      '- id: v01\n  title: 第一卷\n  summary: 正主\n  chapters: 001-001\n- id: v01\n  title: 第一卷之二\n  summary: 手改残留的重复卷\n  chapters: 001-001\n',
+    )
+    const result = checkProject(dir)
+    assert.equal(result.ok, false)
+    const hit = result.problems.find((p) => p.level === 'error' && p.file === 'volumes.yml')
+    assert.ok(hit && hit.message.includes('id 重复：v01') && hit.message.includes('第 1 条与第 2 条'), JSON.stringify(result.problems))
+  })
+})
+
+test('checkProject：M9 对称校验——clue/memories 枚举与章节引用、timeline.chapter、relations.started、foreshadows.source', () => {
+  withWorkspace('check-m9-bad', (dir) => {
+    write(path.join(dir, 'chapters/v01-c001.md'), chapterFm({ num: 1 }) + '正文。\n')
+    write(path.join(dir, 'clue-board.yml'), '- kind: hunch\n  content: 玉佩成对\n  related_chapter: v01-c099\n  resolved: false\n')
+    write(path.join(dir, 'memories.yml'), '- category: vibe\n  content: 林晚儿登场\n  source_chapter: v01-c099\n')
+    // 花写年份（只给 warn）也不放过 chapter 引用校验（error 并存）
+    write(path.join(dir, 'timeline.yml'), '- year: 玄历三年冬\n  title: 北境雪灾\n  description: 花写年份挡不住引用校验\n  chapter: v01-c099\n')
+    write(path.join(dir, 'relations.yml'), '- a: ghost\n  b: ghost2\n  type: 宿敌\n  started: v01-c099\n')
+    write(path.join(dir, 'foreshadows.yml'), '- id: fs-001\n  status: planted\n  priority: high\n  planted_chapter: v01-c001\n  source: rewrite\n')
+    const result = checkProject(dir)
+    const errs = result.problems.filter((p) => p.level === 'error').map((p) => `${p.file}|${p.message}`)
+    assert.ok(errs.some((m) => m.startsWith('clue-board.yml|') && m.includes('kind 越枚举：hunch')), JSON.stringify(errs))
+    assert.ok(errs.some((m) => m.startsWith('clue-board.yml|') && m.includes('related_chapter 引用章节不存在：v01-c099')))
+    assert.ok(errs.some((m) => m.startsWith('memories.yml|') && m.includes('category 越枚举：vibe')))
+    assert.ok(errs.some((m) => m.startsWith('memories.yml|') && m.includes('source_chapter 引用章节不存在：v01-c099')))
+    assert.ok(errs.some((m) => m.startsWith('timeline.yml|') && m.includes('chapter 引用章节不存在：v01-c099')))
+    assert.ok(errs.some((m) => m.startsWith('relations.yml|') && m.includes('started 引用章节不存在：v01-c099')))
+    assert.ok(errs.some((m) => m.startsWith('foreshadows.yml|') && m.includes('source 越枚举：rewrite')))
+  })
+})
+
+test('checkProject：M9 合法枚举与在案引用零新增问题', () => {
+  withWorkspace('check-m9-clean', (dir) => {
+    write(path.join(dir, 'chapters/v01-c001.md'), chapterFm({ num: 1, status: 'accepted' }) + '正文一。\n')
+    write(path.join(dir, 'chapters/v01-c002.md'), chapterFm({ num: 2, status: 'accepted' }) + '正文二。\n')
+    write(path.join(dir, 'clue-board.yml'), '- kind: red-herring\n  content: 掌柜装作不识玉佩\n  related_chapter: v01-c001\n  resolved: false\n')
+    write(path.join(dir, 'memories.yml'), '- category: appearance\n  content: 林晚儿于 v01-c001 登场\n  source_chapter: v01-c001\n')
+    // 年份须含数字（纯汉字纪年另有 warn），枚举值与引用全部在案
+    write(path.join(dir, 'timeline.yml'), '- year: 玄历1024年冬\n  title: 北境雪灾\n  importance: 4\n  chapter: v01-c001\n')
+    write(
+      path.join(dir, 'foreshadows.yml'),
+      '- id: fs-001\n  status: resolved\n  priority: high\n  planted_chapter: v01-c001\n  resolved_chapter: v01-c002\n  source: backfill\n',
+    )
+    const result = checkProject(dir)
+    assert.deepEqual(result.problems, [])
+  })
+})
+
+test('M10：.md 大小写不敏感——CLI 侧 collectChapters / checkProject 都收录 .MD 章', () => {
+  withWorkspace('md-casing', (dir) => {
+    write(path.join(dir, 'chapters/v01-c001.md'), chapterFm({ num: 1 }) + '正文一。\n')
+    write(path.join(dir, 'chapters/v01-c002.MD'), chapterFm({ num: 2 }) + '正文二。\n')
+    // collectChapters（listMdFiles 口径）收录 .MD，且章号序正常（stem 已去后缀）
+    assert.deepEqual(
+      collectChapters(dir).map((c) => c.file),
+      ['v01-c001.md', 'v01-c002.MD'],
+    )
+    // checkProject 同口径：大写后缀章计入章节数，不当杂散文件漏计
+    assert.equal(checkProject(dir).summary.chapters, 2)
   })
 })
 

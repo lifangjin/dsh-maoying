@@ -23,7 +23,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
 import { EventEmitter } from 'node:events'
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -111,7 +111,8 @@ test('围栏：无 Host / 非回环非受信 Host 一律 403', async () => {
   const handler = await registeredHandler(env)
   const noHost = await call(handler, { url: '/api/maoying/workspaces' })
   assert.equal(noHost.status, 403)
-  assert.deepEqual(JSON.parse(noHost.raw), { error: 'forbidden' })
+  // 错误形状契约统一 { ok: false, error }——围栏 403 也不例外
+  assert.deepEqual(JSON.parse(noHost.raw), { ok: false, error: 'forbidden' })
   const evil = await call(handler, { url: '/api/maoying/workspaces', headers: { host: 'evil.example.com:80' } })
   assert.equal(evil.status, 403)
 })
@@ -124,7 +125,7 @@ test('围栏：sec-fetch-site cross-site 403（即便 Host 回环）', async () 
     headers: { ...LOOPBACK, 'sec-fetch-site': 'cross-site' },
   })
   assert.equal(state.status, 403)
-  assert.deepEqual(JSON.parse(state.raw), { error: 'forbidden' })
+  assert.deepEqual(JSON.parse(state.raw), { ok: false, error: 'forbidden' })
 })
 
 test('围栏：origin 同源放行；异源 403（异主机、异端口、异 scheme 都算）', async () => {
@@ -786,6 +787,30 @@ test('host-debug：200 含五级探针 trace，本机绝对路径脱敏', async 
   // 脱敏纪律：测试 cwd 就是插件根，必进 runtime.cwd / argv——不得以绝对路径出门
   assert.ok(!state.raw.includes(PLUGIN_ROOT), 'host-debug 响应不得包含插件根绝对路径')
   assert.ok(body.runtime.cwd !== process.cwd(), 'cwd 应已脱敏为 ~ 前缀相对形态')
+})
+
+test('L11 纵深加固：已注册工作区根（家目录外）的绝对路径不得出现在错误 message', async () => {
+  const env = makeEnv()
+  const handler = await registeredHandler(env)
+  // 探针：novel/index.yml 换成目录（fixtures 不产 index.yml，直接建目录）→
+  // rebuild-index 落盘 rename 必炸 EISDIR，
+  // 原始错误 message 恒带工作区根下的绝对路径（fs 错误自带完整路径）——正好
+  // 检验路由层把已注册工作区根并入脱敏替换表。
+  rmSync(path.join(env.root, 'novel', 'index.yml'), { force: true })
+  mkdirSync(path.join(env.root, 'novel', 'index.yml'))
+  const state = await call(handler, {
+    method: 'POST', url: '/api/maoying/rebuild-index', headers: LOOPBACK,
+    body: { path: env.root },
+  })
+  assert.equal(state.status, 500)
+  const body = JSON.parse(state.raw)
+  assert.equal(body.ok, false)
+  assert.ok(!state.raw.includes(env.root), '错误 message 不得包含已注册工作区根的绝对路径')
+  // 工作区根在家目录外（tmp 临时目录常态）时基础替换表接不住它——只有工作区
+  // 根扩展层能把它换成 ~ 前缀形态；根碰巧在家目录内则基础表已覆盖，不重复断言。
+  if (!env.root.startsWith(path.resolve(os.homedir()))) {
+    assert.ok(body.error.includes('~/'), `工作区根应已脱敏为 ~ 前缀形态：${body.error}`)
+  }
 })
 
 test('非法 JSON body：400 且 error 点名 invalid JSON', async () => {

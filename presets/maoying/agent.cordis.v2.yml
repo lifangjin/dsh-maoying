@@ -188,6 +188,11 @@
                   toolName: outline
                   backgroundMode: continuable
                   agentPreset: maoying-outline
+              # 命名注意：toolName: write 与 tool-fs 提供的文件写工具 write 同名
+              # （'write' 一名双义）。宿主 registry 对同名工具的处理仓内无法核实，
+              # 故不改 toolName（行为风险）；restrict.mjs MAIN_AGENT_ALLOW 单条
+              # 'write' 即同时放行两义，改名前须先核实 registry 并与 v1/工具面
+              # 一起改（详见 agent.cordis.yml 的 delegation-write 行注释）。
               - id: delegation-write
                 name: "@deepseek-ai/dsh-tool-subagent"
                 config:
