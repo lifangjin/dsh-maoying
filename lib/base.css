@@ -461,7 +461,7 @@ html[data-dsh-maoying-active]:not([data-dsh-mnemon-active]):not([data-dsh-taskbo
 .myt-dimLabel { font-size: 11px; line-height: 16px; color: var(--dsw-alias-label-tertiary); margin-bottom: 2px; }
 .myt-dimText { font-size: 12px; line-height: 18px; color: var(--dsw-alias-label-secondary); overflow-wrap: anywhere; }
 
-/* ── 0.1.19 引入正文/章纲面板编辑态；0.1.22 起正文自动保存（2s 防抖）─────
+/* ── 0.1.19 引入正文/章纲面板编辑态；0.1.22 起正文自动保存（防抖 0.1.23 起 30s）─
    编辑态与只读态的区分靠主题色边框强调（只读态是无边框淡底的
    .myt-chapterBody pre）；正文 textarea 排版与只读正文对齐（同 UI 字体、
    13px/22px 行高）所见即所得，高度随内容自动长高——当年的等宽字体 +
