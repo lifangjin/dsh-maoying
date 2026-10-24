@@ -79,12 +79,22 @@ test('段落截断：段落后紧跟表格时表格独立成块（GitHub 语义�
   assert.ok(!out.includes('前言<br>'), out)
 })
 
-test('列数不齐宽容渲染：缺列补空 td、多列照渲染', () => {
-  const short = renderMd('| a | b | c |\n|---|---|\n| 1 |')
+test('数据行列数不齐宽容渲染：缺列补空 td、多列照渲染', () => {
+  const short = renderMd('| a | b |\n|---|---|\n| 1 |')
   assert.ok(short.includes('<td>1</td><td></td>'), short)
   const extra = renderMd('| a |\n|---|\n| 1 | 2 |')
   assert.ok(extra.includes('<th>a</th>'), extra)
   assert.ok(extra.includes('<td>1</td><td>2</td>'), extra)
+})
+
+test('表头列数 ≠ 分隔行列数不认表（GFM 规范，防误吞分隔线/下文）', () => {
+  const mismatch = renderMd('| a | b | c |\n|---|---|\n| 1 | 2 | 3 |')
+  assert.ok(!mismatch.includes('<table'), mismatch)
+  assert.ok(mismatch.includes('<p class="myt-mdP">'), mismatch)
+  const hrTrap = renderMd('战力 | 境界\n---\n下文')
+  assert.ok(!hrTrap.includes('<table'), hrTrap)
+  const plus = renderMd('| a |\n|---|---|\n| 1 |')
+  assert.ok(!plus.includes('<table'), plus)
 })
 
 test('安全：单元格内 HTML 保持转义态，无裸标签通道', () => {
