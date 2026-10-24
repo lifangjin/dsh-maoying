@@ -133,3 +133,57 @@ test('getVersionInfo：并发调用 in-flight 去重，且返回浅拷贝不污�
   const cached = await getVersionInfo({ fetchImpl, now: 40_000_000_000 + 1000 }) // TTL 内复用缓存
   assert.equal(cached.latest, 'v8.8.8', '缓存结果不受调用方原地改写影响')
 })
+
+test('getVersionInfo：force 手动检测绕过 1h 缓存', async () => {
+  // 顺序耦合声明：本用例与下一个 force 用例排在整个文件最后（前一个用例已
+  // 把缓存推到 4e10），时间戳 5e10 起层层递进且大于之前所有用例——同文件
+  // node:test 按声明顺序串行，时间戳倒退会把模块级缓存推到「未来」失真
+  //（见上方各用例的顺序声明）。
+  let calls = 0
+  const mkFetch = (ver) => async (url) => {
+    const u = String(url)
+    if (u.includes('registry.npmjs.org')) {
+      calls += 1
+      return json({ version: ver })
+    }
+    if (u.includes('registry.npmmirror.com')) return { ok: false, status: 503, json: async () => ({}) }
+    throw new Error('不应走到 GitHub 兜底')
+  }
+  // 第一步：灌缓存（fetch 计数 1）
+  const v1 = await getVersionInfo({ fetchImpl: mkFetch('7.7.1'), now: 50_000_000_000 })
+  assert.equal(v1.latest, 'v7.7.1')
+  assert.equal(calls, 1)
+  // 第二步：TTL 内正常调用命中缓存（fetch 计数不变，还是旧判定）
+  const hit = await getVersionInfo({ fetchImpl: mkFetch('7.7.2'), now: 50_000_000_000 + 1000 })
+  assert.equal(hit.latest, 'v7.7.1', 'TTL 内必须复用缓存，不得发新请求')
+  assert.equal(calls, 1, 'TTL 内命中缓存，fetch 计数不变')
+  // 第三步：force 绕过缓存现测，拿到新版判定（fetch 计数 +1）
+  const v2 = await getVersionInfo({ fetchImpl: mkFetch('7.7.2'), now: 50_000_000_000 + 2000, force: true })
+  assert.equal(v2.latest, 'v7.7.2', 'force 必须绕过 1h 缓存重新检测')
+  assert.equal(v2.updateAvailable, true)
+  assert.equal(calls, 2, 'force 后 fetch 计数增加（真实重测一轮）')
+})
+
+test('getVersionInfo：force 遇 in-flight 复用同一 promise，不另发一轮请求', async () => {
+  // 时间戳 6e10 继续大于上一用例（5e10+2s），缓存窗口彻底错开：这里首次
+  // 调用必走 in-flight 去重而非 TTL 复用。
+  let calls = 0
+  const fetchImpl = async (url) => {
+    const u = String(url)
+    if (u.includes('registry.npmjs.org')) {
+      calls += 1
+      await new Promise((r) => setTimeout(r, 20)) // 拉长检测窗口，逼出并发重叠
+      return json({ version: '6.6.' + calls })
+    }
+    if (u.includes('registry.npmmirror.com')) return { ok: false, status: 503, json: async () => ({}) }
+    throw new Error('不应走到 GitHub 兜底')
+  }
+  const t = 60_000_000_000
+  const [a, b] = await Promise.all([
+    getVersionInfo({ fetchImpl, now: t, force: true }),
+    getVersionInfo({ fetchImpl, now: t, force: true }),
+  ])
+  assert.equal(calls, 1, '并发两个 force 调用必须复用同一轮 in-flight 检测，只发一次 registry 请求')
+  assert.equal(a.latest, 'v6.6.1')
+  assert.equal(b.latest, 'v6.6.1', '复用的 in-flight 只落定一次，两调用拿到同一判定')
+})

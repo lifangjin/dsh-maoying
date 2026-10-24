@@ -14,7 +14,7 @@
  * style 读全文/缺失与 style-save 创建/覆写/409/422、
  * chapter-save 正文保存与 outline-save 章纲保存（hash 基线一致 200 /
  * 过期 409 不落盘 / 路径与文件名校验拒）、
- * update-check 响应形状、host-debug 五级探针与脱敏、非法 JSON body 400），
+ * update-check 响应形状（含 fresh=1 手动检测分支）、host-debug 五级探针与脱敏、非法 JSON body 400），
  * 以及 registerPrefixRouteWithRetry 的重试语义（同步抛与 rejected promise
  * 两条路）和 apply() 末尾「路由注册失败只 warn」的降级路径。
  */
@@ -750,6 +750,22 @@ test('update-check：200 且响应形状完整（三级源全败也回降级形�
   if (body.error !== null) {
     assert.equal(body.latest, null, '有 error 时 latest 应为 null（降级形状）')
   }
+})
+
+test('update-check：fresh=1 手动检测分支照常回包（force + 超时 3s→10s）', async () => {
+  // force / timeoutMs 的内部行为在 lib 层测全（version-check.test.mjs），
+  // 这里只验路由接线：query 解析（searchParams 同 workspaces/check 写法）
+  // 与 fresh=1 分支的响应契约——手动检测通道绝不能炸面板。
+  const env = makeEnv()
+  const handler = await registeredHandler(env)
+  const state = await call(handler, { url: '/api/maoying/update-check?fresh=1', headers: LOOPBACK })
+  assert.equal(state.status, 200)
+  const body = JSON.parse(state.raw)
+  assert.equal(body.ok, true)
+  for (const key of ['current', 'latest', 'updateAvailable', 'releaseUrl', 'checkedAt', 'error', 'source']) {
+    assert.ok(key in body, `update-check?fresh=1 响应缺 ${key} 字段`)
+  }
+  assert.equal(typeof body.current, 'string')
 })
 
 test('host-debug：200 含五级探针 trace，本机绝对路径脱敏', async () => {

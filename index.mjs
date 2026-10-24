@@ -999,7 +999,14 @@ export async function registerCreatorRoutes(ctx) {
         if (route === 'update-check' && req.method === 'GET') {
           // 新版检测（模仿 dsh-paoding）：三级源 + 缓存都在 lib/version.mjs，
           // 全失败也静默降级——这里只做转发，绝不影响面板主流程。
-          json(res, 200, { ok: true, ...(await getVersionInfo({ timeoutMs: 3000 })) })
+          // fresh=1（query，写法同 workspaces/check 路由的 searchParams）：
+          // 手动检测更新，绕过 1h 缓存强制现测（getVersionInfo force）；
+          // 用户在前端等结果，超时由 3s 放宽到 10s。缺省维持常态 3s。
+          const fresh = url.searchParams.get('fresh') === '1'
+          json(res, 200, {
+            ok: true,
+            ...(await getVersionInfo(fresh ? { force: true, timeoutMs: 10000 } : { timeoutMs: 3000 })),
+          })
           return
         }
 

@@ -877,8 +877,9 @@ html[data-dsh-maoying-active]:not([data-dsh-mnemon-active]):not([data-dsh-taskbo
 }
 .myt-verBadge:hover { background: color-mix(in srgb, var(--dsw-alias-state-business-primary) 22%, transparent); }
 
-/* 一键升级按钮：与版本徽章同形（描边胶囊），装完/安装中禁用降透明度 */
-.myt-verUpgrade {
+/* 一键升级 / 手动检测更新按钮：同形（描边胶囊），安装中/检测中禁用降透明度 */
+.myt-verUpgrade,
+.myt-verCheck {
   margin-left: 6px;
   padding: 2px 10px;
   border: 1px solid color-mix(in srgb, var(--dsw-alias-state-business-primary) 45%, transparent);
@@ -892,8 +893,10 @@ html[data-dsh-maoying-active]:not([data-dsh-mnemon-active]):not([data-dsh-taskbo
   white-space: nowrap;
   cursor: pointer;
 }
-.myt-verUpgrade:hover:not(:disabled) { background: color-mix(in srgb, var(--dsw-alias-state-business-primary) 12%, transparent); }
-.myt-verUpgrade:disabled { opacity: 0.6; cursor: default; }
+.myt-verUpgrade:hover:not(:disabled),
+.myt-verCheck:hover:not(:disabled) { background: color-mix(in srgb, var(--dsw-alias-state-business-primary) 12%, transparent); }
+.myt-verUpgrade:disabled,
+.myt-verCheck:disabled { opacity: 0.6; cursor: default; }
 
 /* ── 版本号 + 系统设置（字号五档，面板整体 zoom）────────────────────────── */
 .myt-verTag {
