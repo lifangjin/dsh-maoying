@@ -461,9 +461,11 @@ html[data-dsh-maoying-active]:not([data-dsh-mnemon-active]):not([data-dsh-taskbo
 .myt-dimLabel { font-size: 11px; line-height: 16px; color: var(--dsw-alias-label-tertiary); margin-bottom: 2px; }
 .myt-dimText { font-size: 12px; line-height: 18px; color: var(--dsw-alias-label-secondary); overflow-wrap: anywhere; }
 
-/* ── 0.1.19：正文/章纲面板编辑态（textarea + 手动保存）────────────────────
-   与只读态的区分要一眼可辨：全宽等宽 textarea + 主题色边框强调；只读态是
-   无边框淡底的 pre（.myt-chapterBody）与 MdView。 */
+/* ── 0.1.19 引入正文/章纲面板编辑态；0.1.22 起正文自动保存（2s 防抖）─────
+   编辑态与只读态的区分靠主题色边框强调（只读态是无边框淡底的
+   .myt-chapterBody pre）；正文 textarea 排版与只读正文对齐（同 UI 字体、
+   13px/22px 行高）所见即所得，高度随内容自动长高——当年的等宽字体 +
+   resize: vertical 已成史。章纲编辑区（.myt-outlineArea）仍手动保存。 */
 .myt-bodyEdit { display: flex; flex-direction: column; gap: 8px; }
 .myt-chapterEditArea {
   width: 100%;
@@ -473,10 +475,11 @@ html[data-dsh-maoying-active]:not([data-dsh-mnemon-active]):not([data-dsh-taskbo
   border-radius: 10px;
   background: var(--dsw-alias-bg-layer-1, var(--dsw-alias-bg-layer-2));
   color: var(--dsw-alias-label-primary);
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-family: inherit; /* 所见即所得：与 .myt-chapterBody 同 UI 字体 */
   font-size: 13px;
-  line-height: 1.7;
-  resize: vertical;
+  line-height: 22px; /* 与 .myt-chapterBody 一致 */
+  resize: none; /* 高度由自动长高 effect 接管 */
+  overflow: hidden;
   min-height: 320px;
 }
 .myt-editHint { font-size: 11px; line-height: 16px; color: var(--dsw-alias-label-tertiary); }
