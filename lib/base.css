@@ -1013,6 +1013,15 @@ html[data-dsh-maoying-active]:not([data-dsh-mnemon-active]):not([data-dsh-taskbo
 .myt-md a { color: var(--dsw-alias-state-business-primary); text-decoration: none; }
 .myt-md a:hover { text-decoration: underline; }
 .myt-md strong { color: var(--dsw-alias-label-primary); }
+.myt-md .myt-mdTableWrap { overflow-x: auto; margin: 6px 0 10px; }
+/* white-space: normal 必须有：落点容器（.myt-outlineBody / .myt-worldDesc）是
+   pre-wrap，不覆盖则单元格内容按源码换行。 */
+.myt-md table.myt-mdTable { border-collapse: collapse; width: 100%; white-space: normal; font-size: 12px; line-height: 1.6; }
+.myt-md .myt-mdTable th, .myt-md .myt-mdTable td { border: 1px solid var(--dsw-alias-border-l1); padding: 5px 9px; text-align: left; vertical-align: top; }
+.myt-md .myt-mdTable th { background: var(--dsw-alias-bg-layer-3); color: var(--dsw-alias-label-primary); font-weight: 600; }
+.myt-md .myt-mdTable .myt-ta-l { text-align: left; }
+.myt-md .myt-mdTable .myt-ta-c { text-align: center; }
+.myt-md .myt-mdTable .myt-ta-r { text-align: right; }
 
 /* ── 书稿元信息表单（概览「编辑」态展开）────────────────────────────────── */
 .myt-setGrid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px 16px; }
