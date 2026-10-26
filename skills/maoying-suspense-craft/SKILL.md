@@ -18,7 +18,7 @@ description: 悬疑主线与对比表现力方法论——悖论式悬念定义�
 - 线索只解答一部分：每条线索给增量答案，同时留出更大的问号；一次全解答，循环即断。
 - 新悬念两个来源：行动过程中自然长出；线索之间互相冲突生出。凭空抛出、无源无据的新悬念不算。
 - 行动段必须带卖点（克服困境/升级/探索皆可）；没有卖点的行动段尽量压缩——悬疑不是灌水许可证。
-- 数据落账：线索、悬问、误导进 novel/clue-board.yml（clue/question/red-herring/deduction）；主线级悬念同时在 foreshadows.yml 登记排期，回收口径同 maoying-foreshadow-discipline。
+- 数据落账：线索、悬问、误导进 novel/clue-board.yml（clue/question/red-herring/deduction）；主线级悬念同时排期登记进 foreshadows.yml（登记落账归设定管理员：大纲师规划时对照、写手执行后在回报中列异动），回收口径同 maoying-foreshadow-discipline。
 
 ## 信息差四象限
 
