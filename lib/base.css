@@ -1048,6 +1048,13 @@ html[data-dsh-maoying-active]:not([data-dsh-mnemon-active]):not([data-dsh-taskbo
 .myt-readerTitle { margin: 0; min-width: 0; flex: 1 1 auto; font-size: 16px; line-height: 24px; font-weight: 600; color: var(--dsw-alias-label-primary); overflow-wrap: anywhere; }
 .myt-readerBarActions { display: flex; align-items: center; gap: 8px; }
 .myt-readerBody { flex: 1 1 auto; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 12px; padding-right: 4px; }
+/* tab 实例高度受界（.myt-viewTab height:100%）：readerBody 成了定高滚动容器，
+   flex 子项默认可收缩——章纲面板（overflow:hidden）一压就裁字；正文卡
+   max-height:48vh 是中栏「整页塞进视口」口径，在 pane 里只会留大片空白。
+   pane 口径：章纲面板禁收缩（内部 32vh 滚动上限保留），正文卡吃满剩余
+   高度、内部滚动——无裁字也无空洞。overlay（.myt-page 自然高）不受影响。 */
+.myt-viewTab .myt-outlinePanel { flex-shrink: 0; }
+.myt-viewTab .myt-chapterBody { flex: 1 1 auto; max-height: none; min-height: 0; }
 .myt-readerFoot {
   flex: none;
   display: flex;
