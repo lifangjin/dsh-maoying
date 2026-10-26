@@ -977,7 +977,9 @@ html[data-dsh-maoying-active]:not([data-dsh-mnemon-active]):not([data-dsh-taskbo
 .myt-viewRoot { position: relative; height: 100%; min-height: 0; }
 /* 右侧栏 tab 形态的实例根：铺满停靠格（不带 data-dsh-maoying-view 属性，
    不受 overlay 的 absolute+display:none 影响；.myt-view 出 zoom 与隔离）。 */
-.myt-viewTab { position: relative; display: flex; flex-direction: column; height: 100%; min-height: 0; width: 100%; }
+.myt-viewTab { position: relative; display: flex; flex-direction: column; height: 100%; min-height: 0; width: 100%; box-sizing: border-box; padding: 14px 16px; }
+/* 窄 pane（右栏宽度随用户拖拽）不再被 .myt-page 的中栏 minWidth 顶出横向滚动 */
+.myt-viewTab .myt-page { min-width: 0; }
 .myt-viewRoot { position: relative; height: 100%; min-height: 0; }
 .myt-settingsMask {
   position: absolute;
