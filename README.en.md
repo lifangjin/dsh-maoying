@@ -100,17 +100,18 @@ Companion commands: `maoying brief <dir> <chapter>` packs a per-chapter writing 
 
 ## Methodology Skills
 
-The plugin ships 5 web-novel methodology skills. At startup the installer drops five `maoying-*` directories under `~/.dsh/skills/` (i.e. `<home>/skills/`) where the host's skill panel lists them; the outliner, writer, reviewer and lore keeper load them by scenario — no manual steps:
+The plugin ships 6 web-novel methodology skills. At startup the installer drops six `maoying-*` directories under `~/.dsh/skills/` (i.e. `<home>/skills/`) where the host's skill panel lists them; the outliner, writer, reviewer and lore keeper load them by scenario — no manual steps:
 
 | Skill | One-liner |
 |---|---|
 | maoying-golden-opening | Golden three chapters: the four opening archetypes, role split of the first three chapters (world hook → motivation → conflict detonation), confrontation-focus and golden-finger principles, the "something happens in the first 300 words" rule, information-release discipline and a self-check list |
-| maoying-beat-pacing | Payoff pacing: the instant-feedback loop, a payoff-type library, suppression-release ratios, chapter/arc/book pacing curves and chapter-end hook selection |
+| maoying-beat-pacing | Payoff pacing: the instant-feedback loop, anticipation management, a payoff-type library with face-slap beat ratios, suppression-release ratios, pacing curves and chapter-end hook selection |
 | maoying-review-checklist | Review checklist: seven layers (language / pacing / characterization / logic / foreshadowing / spoilers / style) with P0/P1/P2 severity |
 | maoying-foreshadow-discipline | Foreshadow management: setup vs. foreshadowing, register on planting, pacing & scheduling, the "surprising yet reasonable" payoff bar, and ledger cleanup thresholds |
-| maoying-suspense-craft | Suspense & contrast: paradox-based suspense definition, the suspense-action-clue loop, sealing reader guesses, and contrast techniques |
+| maoying-suspense-craft | Suspense & contrast: paradox-based suspense, the suspense-action-clue loop, the information-gap quadrants, sealing reader guesses, and contrast techniques |
+| maoying-volume-craft | Volume & unit structure: the four volume locks (theme / gains / power cap / milestones), the five-step unit loop, subplot length limits, map-change discipline, ensemble ledger and parallel anticipation lines |
 
-The installer only touches `maoying-*` prefixed directories; your own skills under `~/.dsh/skills/` are untouched, byte for byte. After uninstalling the plugin, remove the skill directories manually (all five together):
+The installer only touches `maoying-*` prefixed directories; your own skills under `~/.dsh/skills/` are untouched, byte for byte. After uninstalling the plugin, remove the skill directories manually (all six together):
 
 ```bash
 dsh plugin --profile web remove dsh-maoying
