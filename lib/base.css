@@ -928,6 +928,9 @@ html[data-dsh-maoying-active]:not([data-dsh-mnemon-active]):not([data-dsh-taskbo
   font-weight: 500;
   vertical-align: middle;
 }
+
+/* 系统设置齿轮：挂在标题行版本区之后，与版本元素同排垂直居中（尺寸沿用 myt-btnIcon） */
+.myt-verGear { margin-left: 10px; vertical-align: middle; }
 .myt-view, .myt-modalMask, .myt-settingsMask { zoom: var(--myt-zoom, 1); }
 .myt-settingsMask {
   position: fixed;
