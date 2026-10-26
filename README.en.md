@@ -100,16 +100,17 @@ Companion commands: `maoying brief <dir> <chapter>` packs a per-chapter writing 
 
 ## Methodology Skills
 
-The plugin ships 4 web-novel methodology skills. At startup the installer drops four `maoying-*` directories under `~/.dsh/skills/` (i.e. `<home>/skills/`) where the host's skill panel lists them; the outliner, writer, reviewer and lore keeper load them by scenario — no manual steps:
+The plugin ships 5 web-novel methodology skills. At startup the installer drops five `maoying-*` directories under `~/.dsh/skills/` (i.e. `<home>/skills/`) where the host's skill panel lists them; the outliner, writer, reviewer and lore keeper load them by scenario — no manual steps:
 
 | Skill | One-liner |
 |---|---|
-| maoying-golden-opening | Golden three chapters: role split of the first three chapters (world hook → motivation → conflict detonation), the "something happens in the first 300 words" rule, information-release discipline and a self-check list |
-| maoying-beat-pacing | Payoff pacing: a payoff-type library, suppression-release ratios, chapter/arc/book pacing curves and chapter-end hook selection |
+| maoying-golden-opening | Golden three chapters: the four opening archetypes, role split of the first three chapters (world hook → motivation → conflict detonation), confrontation-focus and golden-finger principles, the "something happens in the first 300 words" rule, information-release discipline and a self-check list |
+| maoying-beat-pacing | Payoff pacing: the instant-feedback loop, a payoff-type library, suppression-release ratios, chapter/arc/book pacing curves and chapter-end hook selection |
 | maoying-review-checklist | Review checklist: seven layers (language / pacing / characterization / logic / foreshadowing / spoilers / style) with P0/P1/P2 severity |
-| maoying-foreshadow-discipline | Foreshadow management: register on planting, pacing & scheduling, the "surprising yet reasonable" payoff bar, and ledger cleanup thresholds |
+| maoying-foreshadow-discipline | Foreshadow management: setup vs. foreshadowing, register on planting, pacing & scheduling, the "surprising yet reasonable" payoff bar, and ledger cleanup thresholds |
+| maoying-suspense-craft | Suspense & contrast: paradox-based suspense definition, the suspense-action-clue loop, sealing reader guesses, and contrast techniques |
 
-The installer only touches `maoying-*` prefixed directories; your own skills under `~/.dsh/skills/` are untouched, byte for byte. After uninstalling the plugin, remove the skill directories manually (all four together):
+The installer only touches `maoying-*` prefixed directories; your own skills under `~/.dsh/skills/` are untouched, byte for byte. After uninstalling the plugin, remove the skill directories manually (all five together):
 
 ```bash
 dsh plugin --profile web remove dsh-maoying
