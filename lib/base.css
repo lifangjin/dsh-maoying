@@ -505,6 +505,45 @@ html[data-dsh-maoying-active]:not([data-dsh-mnemon-active]):not([data-dsh-taskbo
   padding: 12px;
   box-sizing: border-box;
 }
+/* ── 0.1.26 编辑器字号缩放 + 全屏 ──
+   字号/行高全走 inline style（editFs 单源派生，textarea 与镜像必须同值否则行
+   号错位），CSS 只给兜底默认。全屏覆盖层 portal 进实例根（MaskPortal 同款、
+   无 portal 老宿主原地渲染），不入 .myt-view 的 --myt-zoom 名单——覆盖层内
+   一律绝对 px（字号档位本身是绝对值），不吃全局 zoom 是预期行为。 */
+.myt-editTools { display: flex; align-items: center; justify-content: flex-end; gap: 6px; }
+.myt-editTools .myt-btn { padding: 2px 8px; font-size: 11px; line-height: 16px; }
+.myt-editFsPct { font-size: 11px; line-height: 16px; color: var(--dsw-alias-label-tertiary); font-variant-numeric: tabular-nums; }
+.myt-editToolsSep { font-size: 11px; color: var(--dsw-alias-label-tertiary); }
+.myt-editFsOverlay {
+  position: absolute; /* 实例根即定位上下文（同 .myt-modalMask，portal 进实例根） */
+  inset: 0;
+  z-index: 90; /* 盖过 myt-modalMask(80)：全屏编辑时面板上不叠别的弹层 */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: color-mix(in srgb, var(--dsw-alias-bg-base, #000) 55%, transparent);
+}
+.myt-editFsShell {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: min(1100px, 94vw);
+  height: 94%;
+  padding: 14px 16px 16px;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 14px;
+  background: var(--dsw-alias-bg-layer-1, var(--dsw-alias-bg-layer-2));
+  box-shadow: 0 18px 60px rgba(0, 0, 0, 0.35);
+}
+.myt-editFsHead { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.myt-editFsGroup { display: flex; align-items: center; gap: 6px; }
+.myt-editFsGroup .myt-btn { padding: 2px 8px; font-size: 11px; line-height: 16px; }
+.myt-editFsCard { flex: 1; min-height: 0; gap: 10px; }
+.myt-editFsCard .myt-editWrap { flex: 1; min-height: 0; }
+.myt-editFsCard .myt-chapterEditArea { height: 100%; overflow-y: auto; } /* 全屏高度归覆盖层布局；inline height 已由测量 effect 清除 */
+.myt-editFsCard .myt-chapterEditTitle { flex: none; }
+.myt-editFsCard .myt-editHint { flex: none; }
 /* 0.1.25 标题编辑：编辑器顶部章节名输入框——与正文一次原子保存 */
 .myt-chapterEditTitle {
   width: 100%;
