@@ -977,9 +977,22 @@ html[data-dsh-maoying-active]:not([data-dsh-mnemon-active]):not([data-dsh-taskbo
 .myt-viewRoot { position: relative; height: 100%; min-height: 0; }
 /* 右侧栏 tab 形态的实例根：铺满停靠格（不带 data-dsh-maoying-view 属性，
    不受 overlay 的 absolute+display:none 影响；.myt-view 出 zoom 与隔离）。 */
-.myt-viewTab { position: relative; display: flex; flex-direction: column; height: 100%; min-height: 0; width: 100%; box-sizing: border-box; padding: 14px 16px; }
+.myt-viewTab { position: relative; display: flex; flex-direction: column; height: 100%; min-height: 0; width: 100%; box-sizing: border-box; padding: 14px 16px; container-type: inline-size; }
 /* 窄 pane（右栏宽度随用户拖拽）不再被 .myt-page 的中栏 minWidth 顶出横向滚动 */
 .myt-viewTab .myt-page { min-width: 0; }
+/* ── 窄 pane（右栏 tab）自适应：容器查询按 .myt-viewTab 实宽收拢 ──
+   文章页按中栏宽幅设计，进右栏窄 pane 后顶栏按钮行/章纲头/五维卡会挤爆。
+   media query 无用（窗口是宽的，pane 只是窗口里一条），必须容器查询；
+   overlay（.myt-view/.myt-viewRoot）不在查询作用域，零影响。 */
+@container (max-width: 560px) {
+  .myt-viewTab .myt-readerBar { flex-wrap: wrap; row-gap: 4px; padding-top: 6px; padding-bottom: 8px; }
+  /* 帽签独占一行（order 提前 + 整行占位），返回/编辑/复制路径/删除按钮次行右靠 */
+  .myt-viewTab .myt-readerTitle { order: -1; flex-basis: 100%; font-size: 14px; line-height: 20px; }
+  .myt-viewTab .myt-readerBarActions { margin-left: auto; }
+  .myt-viewTab .myt-readerFoot { flex-wrap: wrap; row-gap: 6px; }
+  .myt-viewTab .myt-outlineHead { flex-wrap: wrap; row-gap: 2px; } /* 章纲头：标题/字数/编辑/删除/箭头可换行不互挤 */
+  .myt-viewTab .myt-dimGrid { grid-template-columns: 1fr; } /* 五维卡单列：160px 双列太挤 */
+}
 .myt-viewRoot { position: relative; height: 100%; min-height: 0; }
 .myt-settingsMask {
   position: absolute;
