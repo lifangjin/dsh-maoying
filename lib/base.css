@@ -704,15 +704,12 @@ html[data-dsh-maoying-active]:not([data-dsh-mnemon-active]):not([data-dsh-taskbo
 .myt-charMeta { font-size: 11px; color: var(--dsw-alias-label-tertiary); }
 .myt-charLine { font-size: 12px; line-height: 18px; color: var(--dsw-alias-label-secondary); overflow-wrap: anywhere; }
 .myt-charLabel { flex: none; font-size: 11px; color: var(--dsw-alias-label-tertiary); }
-/* 弹层锚区居中：--myt-mask-* 由 client.js 持续测量面板容器视口矩形（已除
-   面板 zoom 的 CSS px，mask 自身带 zoom）写入；--myt-anchor-* 同源视觉 px。
-   变量缺省回落 0 = 全窗，行为同旧版。 */
+/* 弹层铺满所属实例：MaskPortal portal 进实例门户根（overlay 的 .myt-viewRoot /
+   右侧栏形态的根），absolute inset:0 即实例矩形，居中基准天然随实例走——
+   多实例并存（中栏 overlay + 右侧栏 tab 同屏）互不干扰。 */
 .myt-modalMask {
-  position: fixed;
-  top: var(--myt-mask-top, 0px);
-  right: var(--myt-mask-right, 0px);
-  bottom: var(--myt-mask-bottom, 0px);
-  left: var(--myt-mask-left, 0px);
+  position: absolute;
+  inset: 0;
   z-index: 80;
   display: flex;
   align-items: center;
@@ -875,24 +872,24 @@ html[data-dsh-maoying-active]:not([data-dsh-mnemon-active]):not([data-dsh-taskbo
 .myt-guideCodeText { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; color: var(--dsw-alias-state-business-primary); }
 .myt-copyBtn { padding: 2px 8px; font-size: 11px; line-height: 16px; }
 
-/* ── toast（fixed 悬浮，host 不挡点击）─────────────────────────────────── */
+/* ── toast（铺满实例的悬浮层，host 不挡点击）──────────────────────────── */
 .myt-toastHost {
-  position: fixed;
-  left: calc(var(--myt-anchor-left, 0px) + var(--myt-anchor-width, 100vw) / 2);
-  bottom: calc(var(--myt-anchor-bottom, 0px) + 28px);
-  transform: translateX(-50%);
+  position: absolute;
+  inset: 0;
   z-index: 90;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 8px;
+  justify-content: flex-end;
+  padding-bottom: 28px;
   pointer-events: none;
 }
 .myt-toast {
   display: flex;
   align-items: flex-start;
   gap: 8px;
-  max-width: min(520px, var(--myt-anchor-width, 86vw));
+  max-width: min(520px, 100%);
+  pointer-events: auto;
   padding: 8px 12px;
   box-sizing: border-box;
   border-radius: 12px;
@@ -972,13 +969,15 @@ html[data-dsh-maoying-active]:not([data-dsh-mnemon-active]):not([data-dsh-taskbo
 
 /* 系统设置齿轮：挂在标题行版本区之后，与版本元素同排垂直居中（尺寸沿用 myt-btnIcon） */
 .myt-verGear { margin-left: 10px; vertical-align: middle; }
-.myt-view, .myt-modalMask, .myt-settingsMask { zoom: var(--myt-zoom, 1); }
+/* zoom 只挂实例根（.myt-view / .myt-viewTab）：弹层 portal 进实例后随根继承，
+   自身再挂会双重放大。 */
+.myt-view { zoom: var(--myt-zoom, 1); }
+/* 实例门户根：overlay 形态下弹层/Toast 的 absolute 定位基准（MaskPortal portal
+   进来）；右侧栏形态的根自带同类规则（见 .myt-viewTab）。 */
+.myt-viewRoot { position: relative; height: 100%; min-height: 0; }
 .myt-settingsMask {
-  position: fixed;
-  top: var(--myt-mask-top, 0px);
-  right: var(--myt-mask-right, 0px);
-  bottom: var(--myt-mask-bottom, 0px);
-  left: var(--myt-mask-left, 0px);
+  position: absolute;
+  inset: 0;
   z-index: 80;
   display: flex;
   align-items: center;
