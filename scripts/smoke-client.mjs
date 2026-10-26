@@ -125,4 +125,41 @@ const disposerB = exportsSurface.apply({ logger: { warn() {} } })
 if (typeof disposerB !== 'function') fail('apply 无 slots 时也应返回 disposer（护栏折返语义）')
 disposerB()
 
+// apply ③：线上踩过的坑——严格 ctx.get 装死（cordis strict=true 对非活跃
+// fiber 的 provide 静默 undefined），属性直读可用（files 插件的实证消费路径）。
+// 双路探测必须仍认出服务：两个 tab 类型照常注册，且不落降级 warn。
+{
+  const slots3 = [], metas3 = []
+  const slotsStub3 = {
+    inject(slot, mount) {
+      slots3.push(slot)
+      const component = mount()
+      if (component === undefined) fail('场景③ inject 工厂未返回 register 结果')
+      return () => {}
+    },
+    register(meta) { metas3.push(meta); return { disposed: false } },
+  }
+  const sbTabs = { register(meta) { metas3.push(meta); return () => {} } }
+  const sbRight = { openTab() {}, close() {}, active() { return null }, isExpanded() { return false }, toggleExpanded() {} }
+  const warns3 = []
+  const disposerC = exportsSurface.apply({
+    logger: { warn(...a) { warns3.push(a.map(String).join(' ')) } },
+    slots: slotsStub3,
+    // 严格语义：一律 undefined（提供者 fiber 非活跃态）
+    get() { return undefined },
+    // 属性直读路径：服务在 ctx 上
+    sidebarRightTabs: sbTabs,
+    sidebarRight: sbRight,
+  })
+  if (typeof disposerC !== 'function') fail('场景③ apply 应返回 disposer')
+  const tabSeats = slots3.filter((s) => s === 'sidebar.right.pane.tab').length
+  if (tabSeats !== 2) fail(`场景③ 应注入 2 个 pane.tab seat（创作台+文章页），实得 ${tabSeats}`)
+  const typeIds = metas3.filter((m) => m && (m.id === 'dsh-maoying' || m.id === 'dsh-maoying-reader'))
+  if (typeIds.length !== 2) fail(`场景③ 应注册 2 个 tab 类型，实得：${JSON.stringify(metas3)}`)
+  if (warns3.some((w) => w.includes('sidebar-right services not found'))) {
+    fail(`场景③ 双路探测成功就不该落降级 warn：${warns3.join(' | ')}`)
+  }
+  disposerC()
+}
+
 console.log('smoke 通过：client.js 编译 ✓ ModuleLoader 截获 ✓ 导出面 { inject, apply } ✓ slots 注入与 disposer ✓')
