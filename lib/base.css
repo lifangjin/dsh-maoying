@@ -467,6 +467,44 @@ html[data-dsh-maoying-active]:not([data-dsh-mnemon-active]):not([data-dsh-taskbo
    13px/22px 行高）所见即所得，高度随内容自动长高——当年的等宽字体 +
    resize: vertical 已成史。章纲编辑区（.myt-outlineArea）仍手动保存。 */
 .myt-bodyEdit { display: flex; flex-direction: column; gap: 8px; }
+/* ── 0.1.26 行号栏：gutter + 编辑区一体卡；镜像 div 同排版规则供测量 ──
+   行号必须对逻辑行：正文一行一段、段落很长，软换行把一个逻辑行折成多个
+   视觉行，等距排号必错位——行号 span 的 top 由镜像测量 effect 写入。 */
+.myt-editWrap { position: relative; display: flex; align-items: stretch; }
+.myt-editGutter {
+  flex: none;
+  position: relative;
+  overflow: hidden;
+  font-size: 11px; /* ch 宽度与行号数字同字号，inline 宽（位数+2ch）随位数自适应 */
+  background: var(--dsw-alias-bg-layer-1, var(--dsw-alias-bg-layer-2));
+  border: 1px solid color-mix(in srgb, var(--dsw-alias-state-business-primary) 45%, transparent);
+  border-right: 1px solid var(--dsw-alias-border-l1); /* 分隔线弱于主题色边框 */
+  border-radius: 10px 0 0 10px; /* 左圆右平，与编辑区拼一张卡 */
+  user-select: none;
+  pointer-events: none;
+}
+.myt-editNums { position: absolute; top: 0; left: 0; right: 0; }
+.myt-editNums span {
+  position: absolute;
+  right: 8px;
+  font-size: 11px;
+  line-height: 22px; /* 与编辑区行高一致，top 偏移即行首 */
+  color: var(--dsw-alias-label-tertiary);
+  font-variant-numeric: tabular-nums;
+}
+.myt-editMirror {
+  position: absolute;
+  top: 0;
+  visibility: hidden;
+  pointer-events: none;
+  white-space: pre-wrap; /* 与编辑区显式钉住的换行规则一致（测量前提） */
+  overflow-wrap: anywhere;
+  font-family: inherit;
+  font-size: 13px;
+  line-height: 22px;
+  padding: 12px;
+  box-sizing: border-box;
+}
 /* 0.1.25 标题编辑：编辑器顶部章节名输入框——与正文一次原子保存 */
 .myt-chapterEditTitle {
   width: 100%;
@@ -482,16 +520,19 @@ html[data-dsh-maoying-active]:not([data-dsh-mnemon-active]):not([data-dsh-taskbo
   font-weight: 600;
 }
 .myt-chapterEditArea {
-  width: 100%;
+  flex: 1;
+  min-width: 0; /* 进 .myt-editWrap flex 行后占满 gutter 之外的剩余宽 */
   box-sizing: border-box;
   padding: 12px;
   border: 1px solid color-mix(in srgb, var(--dsw-alias-state-business-primary) 45%, transparent);
-  border-radius: 10px;
+  border-radius: 0 10px 10px 0; /* 左平右圆：左缘贴行号栏拼一张卡 */
   background: var(--dsw-alias-bg-layer-1, var(--dsw-alias-bg-layer-2));
   color: var(--dsw-alias-label-primary);
   font-family: inherit; /* 所见即所得：与 .myt-chapterBody 同 UI 字体 */
   font-size: 13px;
   line-height: 22px; /* 与 .myt-chapterBody 一致 */
+  white-space: pre-wrap; /* 显式钉住换行规则——镜像测量的对齐前提 */
+  overflow-wrap: anywhere;
   resize: none; /* 高度由自动长高 effect 接管 */
   overflow: hidden;
   min-height: 320px;
