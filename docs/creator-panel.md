@@ -149,7 +149,8 @@ webServer.register({ kind: 'prefix', path: '/api/maoying', handler: async (req, 
 - **MaskPortal**：抽屉/弹层统一 portal 进所属实例根（InstanceScope 提供的 DOM 节点，0.1.26 起；此前 portal 到 `document.body` 靠全局 `--myt-anchor-*` 变量描述锚区，多实例并存会互踩，且面板容器挂在宿主会话中栏时中栏 transform/overflow 会把 `position: fixed` 劫持成相对自身并连同裁剪——桌面端「点了没反应」实测病灶）；弹层 `absolute inset:0` 铺满实例、居中基准随实例走，zoom 只挂实例根防双重放大；无 createPortal 的老宿主退回原地渲染（absolute 相对最近定位祖先）。
 - **顶栏版本区**：当前版本号常驻；`update-check` 路由（模仿 dsh-paoding：npm registry → npmmirror → GitHub 三级源，1h 缓存 + 7 天 stale-if-error，全败静默）发现新版时亮「有新版 ↗」徽章；「检测更新」胶囊与新版提示互斥——无新版（或检测失败拿不到判定）时才显示，点击带 `fresh=1` 手动现测，有新版时收起让位给徽章与「一键升级」；版本区之后挂系统设置齿轮（原右上角动作区移入）。
 - **系统设置**：齿轮弹窗，字号六档（100/110/120/130/140/150%）——面板根与 portal 节点读同一 `--myt-zoom` 变量整体 zoom，localStorage 记忆。
-- **界面语言**：系统设置可选中文/English——全部 UI 文案走 `I18N` 词典（zh/en 各 258 条，`tt`/`tf` 取词 + `{x}` 插值，zh 值与历史硬编码逐字一致保证中文界面零回归），切换立即生效整树重渲并 localStorage 记忆；语言自称（中文/日本語）与侧栏入口品牌名不翻译。
+- **窄 pane 自适应**（0.1.30 起）：右栏 tab 正文根 `.myt-viewTab` 设 `container-type: inline-size`，`@container (max-width: 560px)` 内收拢——顶栏帽签独占一行、返回/编辑/复制路径/删除按钮次行右靠；章纲头与状态流转行放行 `flex-wrap`；五维卡双列改单列。窗口宽 pane 窄，media query 无效，必须容器查询；规则全部钉在 `.myt-viewTab` 作用域，overlay（`.myt-view`/`.myt-viewRoot`）零影响。
+- **界面语言**：系统设置可选中文/English——全部 UI 文案走 `I18N` 词典（zh/en 各 310 条，test/i18n-keys.test.mjs 把关键数一致与键集对称；`tt`/`tf` 取词 + `{x}` 插值，zh 值与历史硬编码逐字一致保证中文界面零回归），切换立即生效整树重渲并 localStorage 记忆；语言自称（中文/日本語）与侧栏入口品牌名不翻译。
 - **Markdown 渲染**：零依赖渲染器（先整体转义再变换），章纲对照与世界观/科学设定描述不再裸显 md 源码；正文手稿仍走 pre。
 - **章节整页阅读**：替代右侧抽屉（侧边栏遮挡问题），返回按钮 + 章纲对照 + 五维 + 状态流转原位保留；阅读态隐藏 tab 条。
 - **小说设置 tab**（第 9 个）：project.yml 平键表单化编辑，`POST project-save` → `mutateProject` 逐键改写保行尾注释、缺键按模板补齐、phase/mode 越枚举与空书名 422。
