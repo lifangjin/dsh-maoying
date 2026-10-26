@@ -975,6 +975,10 @@ html[data-dsh-maoying-active]:not([data-dsh-mnemon-active]):not([data-dsh-taskbo
 /* 实例门户根：overlay 形态下弹层/Toast 的 absolute 定位基准（MaskPortal portal
    进来）；右侧栏形态的根自带同类规则（见 .myt-viewTab）。 */
 .myt-viewRoot { position: relative; height: 100%; min-height: 0; }
+/* 右侧栏 tab 形态的实例根：铺满停靠格（不带 data-dsh-maoying-view 属性，
+   不受 overlay 的 absolute+display:none 影响；.myt-view 出 zoom 与隔离）。 */
+.myt-viewTab { position: relative; height: 100%; min-height: 0; width: 100%; }
+.myt-viewRoot { position: relative; height: 100%; min-height: 0; }
 .myt-settingsMask {
   position: absolute;
   inset: 0;
