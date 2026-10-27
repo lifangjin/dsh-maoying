@@ -161,16 +161,16 @@
               - id: compaction-basic
                 name: "@deepseek-ai/dsh-compaction-basic"
                 config:
-                  thresholdRatio: 0.45
+                  thresholdRatio: 0.8
                   maxTokens: 8192
               - id: command-compact
                 name: "@deepseek-ai/dsh-command-compact"
               - id: tool-result-pruner
                 name: "@deepseek-ai/dsh-compaction-tool-result-pruner"
                 config:
-                  thresholdChars: 8192
-                  headChars: 4096
-                  tailChars: 1024
+                  thresholdChars: 32768
+                  headChars: 8192
+                  tailChars: 2048
           - id: delegation
             name: cordis:group
             group: true
@@ -284,16 +284,16 @@
               - id: compaction-basic
                 name: "@deepseek-ai/dsh-compaction-basic"
                 config:
-                  thresholdRatio: 0.45
+                  thresholdRatio: 0.8
                   maxTokens: 8192
               - id: command-compact
                 name: "@deepseek-ai/dsh-command-compact"
               - id: tool-result-pruner
                 name: "@deepseek-ai/dsh-compaction-tool-result-pruner"
                 config:
-                  thresholdChars: 8192
-                  headChars: 4096
-                  tailChars: 1024
+                  thresholdChars: 32768
+                  headChars: 8192
+                  tailChars: 2048
     # ── 角色 preset：写手（continuable）────────────────────────────────────────
     # persona 逐字复制 v1 delegation-write；工具面同大纲师。
     - id: preset-maoying-write
@@ -346,16 +346,16 @@
               - id: compaction-basic
                 name: "@deepseek-ai/dsh-compaction-basic"
                 config:
-                  thresholdRatio: 0.45
+                  thresholdRatio: 0.8
                   maxTokens: 8192
               - id: command-compact
                 name: "@deepseek-ai/dsh-command-compact"
               - id: tool-result-pruner
                 name: "@deepseek-ai/dsh-compaction-tool-result-pruner"
                 config:
-                  thresholdChars: 8192
-                  headChars: 4096
-                  tailChars: 1024
+                  thresholdChars: 32768
+                  headChars: 8192
+                  tailChars: 2048
     # ── 角色 preset：审校（one-shot，只读）────────────────────────────────────
     # persona 逐字复制 v1 delegation-review；tool-fs 收成 read/readImage 两开、
     # write/edit 关闭——v1 只读 toolFilter 的实体化；无 write/edit/bash；带
@@ -457,16 +457,16 @@
               - id: compaction-basic
                 name: "@deepseek-ai/dsh-compaction-basic"
                 config:
-                  thresholdRatio: 0.45
+                  thresholdRatio: 0.8
                   maxTokens: 8192
               - id: command-compact
                 name: "@deepseek-ai/dsh-command-compact"
               - id: tool-result-pruner
                 name: "@deepseek-ai/dsh-compaction-tool-result-pruner"
                 config:
-                  thresholdChars: 8192
-                  headChars: 4096
-                  tailChars: 1024
+                  thresholdChars: 32768
+                  headChars: 8192
+                  tailChars: 2048
     # ── 角色 preset：素材调研员（one-shot）────────────────────────────────────
     # persona 逐字复制 v1 delegation-research；tool-web 打开 fetch 供 web_fetch 附
     # 来源；无 bash——v2 有意收窄（考据不需要 shell），测试记为白名单例外。

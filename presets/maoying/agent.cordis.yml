@@ -167,7 +167,10 @@
           When ready, call exit_plan_mode with the complete plan markdown, starting with a # title. Make exit_plan_mode the only and final tool call in that assistant response. If review rejects it, incorporate the feedback and present again. If the review channel is unavailable or aborted, stay in plan mode and ask the user to switch modes manually; do not proceed with implementation.
 
 # ── compaction ──────────────────────────────────────────────────────────────
-# 阈值实测校准值：0.45（256K 窗口 ≈ 118K 触发），摘要预算钉 8192。
+# 阈值取宿主默认 0.8：compaction/pruner 都会改写已发送历史，打散 DeepSeek 前缀缓存，
+# 阈值越低触发越频繁、缓存命中率越差（0.45 实测命中率明显偏低）。pruner 预算放到
+# 32768 字符：五本账（foreshadows/memories/index/clue-board/timeline）随章节累积
+# 普遍超旧阈值 8192，压力点一到即被整段替换，同内容反复计费 miss。
 
 - id: compaction
   name: cordis:group
@@ -179,7 +182,7 @@
     - id: compaction-basic
       name: '@deepseek-ai/dsh-compaction-basic'
       config:
-        thresholdRatio: 0.45
+        thresholdRatio: 0.8
         maxTokens: 8192
 
     - id: command-compact
@@ -188,9 +191,9 @@
     - id: tool-result-pruner
       name: '@deepseek-ai/dsh-compaction-tool-result-pruner'
       config:
-        thresholdChars: 8192
-        headChars: 4096
-        tailChars: 1024
+        thresholdChars: 32768
+        headChars: 8192
+        tailChars: 2048
 
 # ── delegation（子代理管理 + 角色委派） ─────────────────────────────────────
 
