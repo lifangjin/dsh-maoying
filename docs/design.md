@@ -108,7 +108,7 @@ novel/
   exports/             # maoying export 导出产物（默认 <dir>/exports/，--out 可改）
 ```
 
-要点：五维字段键名用英文（cognitive_frame / emotional_anchor / world_texture / suspense / interpersonal_tension，YAML 工具安全），值中文；模板文件内注释给中文说明。frontmatter 用 `---` 围栏。所有 yml 顶层是数组或平键，禁止深嵌套——grep 友好。
+要点：五维字段键名用英文（cognitive_frame / emotional_anchor / world_texture / suspense / interpersonal_tension，YAML 工具安全），值中文；章纲 markdown 正文（作者可读文本）只写中文标签（认知框架/情感锚点/世界质感/悬念/人际张力，台账字段同），英文键名不出现在其中；模板文件内注释给中文说明。frontmatter 用 `---` 围栏。所有 yml 顶层是数组或平键，禁止深嵌套——grep 友好。
 
 ## 4. 编排预设：主编 + 五帮手
 

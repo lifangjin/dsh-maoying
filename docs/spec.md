@@ -48,7 +48,7 @@
 - 可选 `writer` 键（co-write 用）：`author | ai`，记本章正文归谁写；缺省按 project.yml 的 `mode` 推——`author-draft` 下整本按 author、`ai-draft` 下整本按 ai。键只做记录与消费：`maoying brief` 写作卡「本章状态」节照录原值、`maoying check` 校验越枚举（合法值 `author|ai`）；不进创作台面板快照（快照 chapters 无此键），状态机仍看 `status`。
 
 ### outlines/vXX-cXXX.md
-章纲：共创模式（`co-write` / `author-draft`）下大纲师给作者的创作输入，与章节文件一一对应（`outlines/v01-c005.md` ↔ `chapters/v01-c005.md`）。**纯 markdown、无 frontmatter**——作者会在任意编辑器里打开它，`---` 围栏只会碍眼（第 1 节「frontmatter 用围栏」的总约束不适用本目录）。六件内容写全：本章目标、节拍（场景推进顺序与情绪起伏）、出场角色（谁上场、各带什么目的）、需埋/需收伏笔（对照 foreshadows.yml 报 id）、与前章接口（从哪个钩子接）、章尾钩子——独立成 `## 钩子` 节（钩子类型 + 内容，类型对照 maoying-beat-pacing 的钩子类型库，写明下一章前提被什么改变）。颗粒度标准：作者拿着就能动笔，不写「参见大纲」式的空转。
+章纲：共创模式（`co-write` / `author-draft`）下大纲师给作者的创作输入，与章节文件一一对应（`outlines/v01-c005.md` ↔ `chapters/v01-c005.md`）。**纯 markdown、无 frontmatter**——作者会在任意编辑器里打开它，`---` 围栏只会碍眼（第 1 节「frontmatter 用围栏」的总约束不适用本目录）。六件内容写全：本章目标、节拍（场景推进顺序与情绪起伏）、出场角色（谁上场、各带什么目的）、需埋/需收伏笔（对照 foreshadows.yml 报 id）、与前章接口（从哪个钩子接）、章尾钩子——独立成 `## 钩子` 节（钩子类型 + 内容，类型对照 maoying-beat-pacing 的钩子类型库，写明下一章前提被什么改变）。全文只写中文标签：五维字段（若单列一节）用 认知框架/情感锚点/世界质感/悬念/人际张力，提及伏笔台账字段用中文（题面/备注/状态/埋设章/预期回收/优先级），英文键名只存在于 frontmatter 与 yml 台账。颗粒度标准：作者拿着就能动笔，不写「参见大纲」式的空转。
 
 约定：章纲是计划不是章节事实，**不入 index.yml**（index 只索引章节实况），面板与 `maoying brief` 现查现拼。谁写谁读：大纲师写，作者读，review 收稿时对照评偏离——作者没照章纲写不算错，偏离如实报给主编裁决，账本永远跟正文走。
 
