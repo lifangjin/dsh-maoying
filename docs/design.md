@@ -38,7 +38,7 @@ dsh-maoying/
 2. index.mjs（cordis 插件 main）启动时执行 ensurePresetInstalled：
    - 解析 dsh home（`DSH_HOME` 或 `~/.dsh`）；
    - 把 `presets/maoying/` 四个文件复制到 `<home>/.agent-presets/maoying/`（内容或版本变化即覆盖，写入 `.installed-version` 标记）；
-   - 在 `<home>/cordis.patch.yml` 写托管块（`# --- dsh-maoying preset managed (auto-generated; do not edit) ---` 起止标记），内容为声明行：
+   - 写 patch 托管块（`# --- dsh-maoying preset managed (auto-generated; do not edit) ---` 起止标记），写入层随环境选择：默认 home 层 `<home>/cordis.patch.yml`；Android compat 壳（每次启动会把 home 层 patch 重写坏，issue #1）或 `DSH_MAOYING_PATCH_LAYER=profile` 时改写 profile 层 `<home>/profiles/<name>/cordis.patch.yml`（壳不碰 profile 层，每次 boot 补写自愈）并清掉 home 层遗留托管块防双声明；写前整文件 YAML 自检，块外有结构性坏行时拒绝写盘只 warn。内容为声明行：
 
      ```yaml
      - insert:

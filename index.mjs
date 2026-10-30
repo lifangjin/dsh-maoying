@@ -15,17 +15,27 @@
  *   3) 把包内 skills/ 的 maoying-* 技能目录复制到 <home>/skills/<name>/
  *      ——同样逐字节比较、一致不写，每个技能目录落 .installed-version 标记；
  *      只碰 maoying-* 前缀目录，用户自己的技能一个字节都不动；
- *   4) 在 <home>/cordis.patch.yml 维护托管块（起止标记见 MANAGED_BEGIN /
- *      MANAGED_END），块内是 dsh-agent-preset 声明行——preset.yml 的
- *      name/description/order 与 agent.cordis.yml 解析出的完整 plugins 数组
- *      全部内联。DSH 0.1.7 起宿主靠这条声明行发现预设；不写它，预设选择器里
- *      就不会出现「毛颖创作 (Maoying)」。
+ *   4) 维护 patch 托管块（起止标记见 MANAGED_BEGIN / MANAGED_END），块内是
+ *      dsh-agent-preset 声明行——preset.yml 的 name/description/order 与
+ *      agent.cordis.yml 解析出的完整 plugins 数组全部内联。DSH 0.1.7 起宿主
+ *      靠这条声明行发现预设；不写它，预设选择器里就不会出现「毛颖创作
+ *      (Maoying)」。写入层随环境选择（resolvePatchLayer）：默认 home 层
+ *      <home>/cordis.patch.yml；Android compat 壳每次启动会把 home 层 patch
+ *      重写坏（把 preset 的 name/description 拍平成缩进错误的声明行，宿主
+ *      解析 fatal，issue #1）——命中壳启发式或环境变量 DSH_MAOYING_PATCH_LAYER
+ *      =profile 时改写 profile 层 <home>/profiles/<name>/cordis.patch.yml
+ *      （壳不碰 profile 层的托管块，每次 boot 补写即自愈），并清掉 home 层
+ *      遗留托管块防双声明。写前把最终文件整体 yaml.parse 自检（!!js 先经
+ *      preprocessPatchText 中和），块外存在结构性坏行时拒绝写盘只 warn；
+ *      托管块外检测到「- id: <预设显示名>」形状的坏行同样只 warn 不动
+ *      （那是块外用户内容，安装器绝不替用户删）。
  *
  * 幂等语义：托管块已存在、.installed-version 与当前版本一致、且块内容与本次
  *   生成的文本逐字节一致 → 跳过；任一不符 → 保住块外用户内容，整块替换；块
- *   不存在 → 文末追加（文件不存在则创建，带一行头注释说明这是 home 级 patch
- *   层）。内容比对是版本比对之外的兜底：开发检出（link 安装）改了预设源而没
- *   改版本号时，重启照样换新，不会带着旧组合过夜。
+ *   不存在 → 文末追加（home 层默认路径的文件不存在则创建，带一行头注释说明
+ *   这是 home 级 patch 层；profile 层等自定义 patchPath 的新文件不写头注释）。
+ *   内容比对是版本比对之外的兜底：开发检出（link 安装）改了预设源而没改版本
+ *   号时，重启照样换新，不会带着旧组合过夜。
  *
  * 形态选择（双形状）：生成内容 = f(宿主版本, 插件版本)。宿主 ≤ 0.2.1-rc.1 用
  *   v1 内联形状（agent.cordis.yml，1 条声明行，委派行内联 persona/toolFilter）；
@@ -125,7 +135,11 @@ const PRESET_FILES = ['preset.yml', 'agent.cordis.yml', 'restrict.mjs', 'delegat
 /** v2 组合源（AgentPreset 形状，仅宿主 ≥ 0.2.1-rc.2 解析；不落盘，包内直读）。 */
 const AGENT_CORDIS_V2_FILE = 'agent.cordis.v2.yml'
 
-/** 新建 <home>/cordis.patch.yml 时的一行头注释：说明这是 home 级 patch 层。 */
+/**
+ * 新建 home 层 <home>/cordis.patch.yml 时的一行头注释：说明这是 home 级 patch
+ * 层。仅默认 home 路径使用——profile 层等自定义 patchPath 的新文件不写头注释
+ * （不该自称 home 级）。
+ */
 const HOME_PATCH_HEADER =
   '# DeepSeek Harness home 级 patch 层（作用于所有 profile）：手工条目可直接追加，各插件的托管块由起止标记维护。'
 
@@ -519,7 +533,21 @@ export function parsePresetRows(yaml, agentCordisV2Text) {
  * yaml 包不可用或组合源解析失败时同样 rows 返回 null（shape/hostVersion 照常
  * 带回，reason 区分 'yaml-unavailable' / 'compose-failed' / 'version-unknown'），
  * 由调用方走既有的「只落文件、跳过声明行并 warn、下次自愈」分支。
+ * 返回对象另带 presetName：包内 preset.yml 顶层 name:（预设显示名，坏块检测
+ * 用，见 upsertManagedBlock）；读不到为 null，绝不因它拖累组合主流程。
  */
+/**
+ * 读预设显示名（包内 preset.yml 顶层 name:），供坏块检测匹配「- id: <显示名>」
+ * 坏块形状（issue #1：Android compat 壳把 preset 元数据拍平成这种坏行）。
+ * 任何失败（文件缺失 / 解析炸）返回 null——它只是可选输入，读不到就跳过检测。
+ */
+function readPresetName(yaml) {
+  try {
+    return parsePresetMeta(yaml, readFileSync(path.join(PLUGIN_ROOT, 'presets', PRESET_ID, 'preset.yml'), 'utf8')).name
+  } catch {
+    return null
+  }
+}
 /**
  * preset 声明行里的本地插件名换成 file:// 绝对地址。相对名按「声明方 baseUrl」
  * 解析——home 托管块的声明基座在宿主 asar 内部，'./x.mjs' 在桌面应用里永远
@@ -557,25 +585,39 @@ export function composeManagedRows(home, logger = console) {
   // warn 留痕、下次宿主启动自动补写），与 yaml-unavailable 同一自愈语义。
   // 确知宿主 < 0.2.1-rc.2 时 v1 内联仍照写（下方原路径不变）。
   if (hostVersion === null) {
-    return { shape, rows: null, hostVersion, yaml: null, reason: 'version-unknown' }
+    return { shape, rows: null, hostVersion, yaml: null, reason: 'version-unknown', presetName: null }
   }
   const yaml = loadYamlLib(home)
-  if (!yaml) return { shape, rows: null, hostVersion, yaml: null, reason: 'yaml-unavailable' }
+  if (!yaml) return { shape, rows: null, hostVersion, yaml: null, reason: 'yaml-unavailable', presetName: null }
   try {
     const installedDir = path.join(home, '.agent-presets', PRESET_ID)
     if (useV2) {
       const text = readFileSync(path.join(PLUGIN_ROOT, 'presets', PRESET_ID, AGENT_CORDIS_V2_FILE), 'utf8')
-      return { shape, rows: absolutizeLocalPluginNames(parsePresetRows(yaml, text), installedDir), hostVersion, yaml, reason: null }
+      return {
+        shape,
+        rows: absolutizeLocalPluginNames(parsePresetRows(yaml, text), installedDir),
+        hostVersion,
+        yaml,
+        reason: null,
+        presetName: readPresetName(yaml),
+      }
     }
     const sourceDir = path.join(PLUGIN_ROOT, 'presets', PRESET_ID)
     const meta = parsePresetMeta(yaml, readFileSync(path.join(sourceDir, 'preset.yml'), 'utf8'))
     const plugins = parseAgentPlugins(yaml, readFileSync(path.join(sourceDir, 'agent.cordis.yml'), 'utf8'))
     // rows 统一为 insert 列表（stringifyManagedBlock 据此渲染同一 - insert: 结构；
     // 与 v1 历史产物逐字节同形，老 home 升级零抖动）
-    return { shape, rows: absolutizeLocalPluginNames(buildPresetRow({ meta, plugins }).insert, installedDir), hostVersion, yaml, reason: null }
+    return {
+      shape,
+      rows: absolutizeLocalPluginNames(buildPresetRow({ meta, plugins }).insert, installedDir),
+      hostVersion,
+      yaml,
+      reason: null,
+      presetName: meta.name,
+    }
   } catch (err) {
     logger.warn?.(`maoying-installer: 组合源解析失败（${shape} 形态，已跳过声明行）: ${err?.message ?? err}`)
-    return { shape, rows: null, hostVersion, yaml, reason: 'compose-failed' }
+    return { shape, rows: null, hostVersion, yaml, reason: 'compose-failed', presetName: null }
   }
 }
 
@@ -597,7 +639,74 @@ export function stringifyManagedBlock(yaml, rows) {
   return `${MANAGED_BEGIN}\n${JSON.stringify(doc)}\n${MANAGED_END}`
 }
 
-// ── home patch 托管块手术 ───────────────────────────────────────────────────
+// ── patch 托管块手术：写入层选择 + 块 upsert + 块删除 ────────────────────────
+
+/**
+ * 托管块写入层的环境变量覆盖名：插件包名 dsh-maoying 转大写、`-` 换 `_`，再加
+ * 后缀 `_PATCH_LAYER`。从包名现算而非手写死串，杜绝拼写漂移。合法值
+ * 'home' | 'profile'，非法值 warn 后按启发式走（见 resolvePatchLayer）。
+ */
+export const PATCH_LAYER_ENV = `${'dsh-maoying'.toUpperCase().replaceAll('-', '_')}_PATCH_LAYER`
+
+/**
+ * 选托管块写入层：返回 'home'（<home>/cordis.patch.yml）或 'profile'
+ * （<home>/profiles/<name>/cordis.patch.yml）。
+ *
+ * 环境变量覆盖优先：PATCH_LAYER_ENV 合法值 'home'/'profile'（大小写与首尾
+ * 空白宽容）直接生效；非法值 warn 一次、按启发式走（显式点名写错了不该静默
+ * 吞掉，也不该炸主流程）。
+ *
+ * 启发式（Android compat 壳检测，issue #1）：壳每次启动都会把 home 层 patch
+ * 重写坏——把 preset 的 name/description 拍平成缩进错误的声明行（形如
+ * `- id: 毛颖创作 (Maoying)` 后跟 8 空格缩进的 name:），宿主
+ * loadOptionalPatches 解析 fatal。命中 platform === 'android'、home 路径含
+ * `com.deepseek.harness.compat`、或含 `/payload/` 路径段任一条件即判为该壳
+ * 环境 → 'profile'（壳不碰 profile 层的托管块，宿主对两层 patch 都挂 HMR，
+ * profile 层是合法写入目标）；其余环境 → 'home'。home/env/platform 均可
+ * 注入（纯函数，测试缝）。
+ */
+export function resolvePatchLayer(home, env = process.env, { platform = process.platform, logger = console } = {}) {
+  const heuristic =
+    platform === 'android' ||
+    String(home).includes('com.deepseek.harness.compat') ||
+    String(home).split(/[\\/]+/).includes('payload')
+      ? 'profile'
+      : 'home'
+  const raw = typeof env?.[PATCH_LAYER_ENV] === 'string' ? env[PATCH_LAYER_ENV].trim().toLowerCase() : ''
+  if (raw === 'home' || raw === 'profile') return raw
+  if (raw !== '') {
+    logger.warn?.(
+      `maoying-installer: 环境变量 ${PATCH_LAYER_ENV}=${env[PATCH_LAYER_ENV]} 非法（合法值 home/profile），按环境启发式处理 → ${heuristic} 层`,
+    )
+  }
+  return heuristic
+}
+
+/**
+ * 解析 profile 层 patch 文件路径：从 argv 找 `--profile <name>`（兼容
+ * `--profile=<name>`，首个命中为准；参数在但值缺失视同没传），没有该参数兜底
+ * 'web'。目标目录 <home>/profiles/<name>/ 存在才返回绝对路径——该层由宿主建
+ * 好后插件才写，绝不越权替宿主 mkdir 整条 profiles 链；不存在返回 null，由
+ * 调用方退回 home 层并 warn。argv 可注入（纯函数，测试缝）。
+ */
+export function resolveProfilePatchPath(home, argv = process.argv) {
+  let name = null
+  for (let i = 0; i < argv.length; i++) {
+    const arg = argv[i]
+    if (arg === '--profile') {
+      const next = argv[i + 1]
+      name = typeof next === 'string' && next !== '' ? next : null
+      break
+    }
+    if (typeof arg === 'string' && arg.startsWith('--profile=')) {
+      name = arg.slice('--profile='.length)
+      break
+    }
+  }
+  if (name === null || name === '') name = 'web'
+  const dir = path.join(home, 'profiles', name)
+  return existsSync(dir) ? path.join(dir, 'cordis.patch.yml') : null
+}
 
 /**
  * 在行数组里定位托管块 [begin, end]（闭区间下标）。无起始标记返回 null；
@@ -626,29 +735,47 @@ export function findManagedSpan(lines, { logger = console } = {}) {
 }
 
 /**
- * 把托管块文本 upsert 进 <home>/cordis.patch.yml。返回动作：
- *   'skipped' — 托管块已在且内容与版本标记都一致，零写盘；
- *   'updated' — 整块替换（块外用户内容一字节不动）；
- *   'created' — 原无托管块，文末追加（文件不存在则连头注释一起新建）。
+ * 把托管块文本 upsert 进指定 patch 文件。目标文件：opts.patchPath（profile
+ * 层等自定义目标）优先，未传维持 home 层 <home>/cordis.patch.yml 默认。返回
+ * 动作：
+ *   'skipped'  — 托管块已在且内容与版本标记都一致，零写盘；
+ *   'updated'  — 整块替换（块外用户内容一字节不动）；
+ *   'created'  — 原无托管块，文末追加（home 层默认路径的文件不存在则连头注释
+ *                一起新建；自定义 patchPath 的新文件不写头注释）；
+ *   'rejected' — 写前 YAML 自检未过：整笔不写盘，warn 带文件路径与解析错误
+ *                （块外多半有宿主都解不了的结构性坏行，交手工清理）。
  *
- * 并发与原子性考量（宿主级共享文件，CLI 与桌面可能双开）：写盘走「同目录
- * 临时文件 + renameSync 原子替换」，不做整文件截断覆写——rename 在同一文件
- * 系统内要么整体成功要么不动，任何时刻盘上只有完整的旧内容或完整的新内容，
+ * opts.yaml（可选）：传入时把拼装完的最终文件内容整体 yaml.parse 回验一遍
+ *（!!js 表达式先经 preprocessPatchText 中和——宿主解析前做同样预处理，别把
+ * 手工 `!!js` 条目误判成坏内容）。issue #1 场景里壳写坏的行混在托管块之外，
+ * 盲写救不了宿主 fatal，自检失败就整笔不写、留 warn 自愈线索。未传（旧调用
+ * 方/直测）维持原行为、不自检。
+ *
+ * opts.presetName（可选，预设显示名）：坏块检测——托管块之外若有行长成
+ * `- id: <presetName>`（显示名被当 id，正是壳拍平 preset.yml 的坏块形状），
+ * warn 提示手工清理；只警告不删——那是块外「用户内容」，安装器绝不动它。
+ *
+ * 并发与原子性考量（不变，宿主级共享文件，CLI 与桌面可能双开）：写盘走「同
+ * 目录临时文件 + renameSync 原子替换」（临时件随 patchPath 落其所在目录，带
+ * pid 命名，多进程各写各的互不踩踏），不做整文件截断覆写——rename 在同一文
+ * 件系统内要么整体成功要么不动，任何时刻盘上只有完整的旧内容或完整的新内容，
  * 进程中途崩溃也绝不会留下半截 YAML。跨进程仍是「各自基于快照整文件替换」
  * 的后写者赢语义（零依赖设计不引文件锁）；配合写前重读对比，把「内容并无
  * 变化」的二跑收敛为零写盘，交错写的实际危害只剩同刻并发更新的丢失，不会
  * 产生损坏文件。
  */
-export function upsertManagedBlock(dshHome, blockText, { versionMarkerCurrent, logger = console }) {
-  const patchPath = path.join(dshHome, 'cordis.patch.yml')
+export function upsertManagedBlock(dshHome, blockText, { versionMarkerCurrent, logger = console, patchPath, yaml, presetName } = {}) {
+  const custom = typeof patchPath === 'string' && patchPath !== ''
+  const target = custom ? patchPath : path.join(dshHome, 'cordis.patch.yml')
+  const targetDir = path.dirname(target)
   let text = null
   try {
-    text = readFileSync(patchPath, 'utf8')
+    text = readFileSync(target, 'utf8')
   } catch (err) {
     if (err?.code !== 'ENOENT') throw err
   }
   const eol = text !== null && text.includes('\r\n') ? '\r\n' : '\n'
-  const lines = text !== null ? text.split(/\r?\n/) : [HOME_PATCH_HEADER, '']
+  const lines = text !== null ? text.split(/\r?\n/) : custom ? [] : [HOME_PATCH_HEADER, '']
   const incoming = blockText.replace(/\r?\n/g, '\n')
 
   const span = findManagedSpan(lines, { logger }) // 损坏块 throw，直接中止（未写任何盘）
@@ -658,22 +785,49 @@ export function upsertManagedBlock(dshHome, blockText, { versionMarkerCurrent, l
     lines.splice(span.begin, span.end - span.begin + 1, ...incoming.split('\n'))
   } else {
     // 文末追加。非空文件先补尾换行（若缺）——split 出的末尾 '' 元素正好兼任
-    // 块前空行分隔；刚补的 '' 同理。文件为空（text === null）时前面已有头注释。
+    // 块前空行分隔；刚补的 '' 同理。空文件（text === null）时 home 层默认路径
+    // 前面已有头注释，自定义路径直接以托管块开头。
     if (text !== null && text.trim() !== '' && lines[lines.length - 1].trim() !== '') lines.push('')
     lines.push(...incoming.split('\n'), '')
   }
+  // 坏块检测（只 warn 不动）：托管块之外若有人把预设显示名写成了 id（壳拍平
+  // preset.yml 的典型坏块形状，issue #1），提示手工清理——这些行宿主解不了，
+  // 但它们是块外「用户内容」，安装器绝不替用户删。
+  if (typeof presetName === 'string' && presetName !== '') {
+    const escaped = presetName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    const badLine = new RegExp(`^\\s*-\\s*id:\\s*${escaped}\\s*(#.*)?$`)
+    const outside = span !== null ? [...lines.slice(0, span.begin), ...lines.slice(span.end + 1)] : lines
+    const badCount = outside.filter((line) => badLine.test(line)).length
+    if (badCount > 0) {
+      logger.warn?.(
+        `maoying-installer: ${target} 托管块之外检测到 ${badCount} 处「- id: ${presetName}」形状的坏行` +
+          '（预设显示名被当作 id，常见于 Android compat 壳重写 home patch 时拍平 preset 元数据）——' +
+          '这些行宿主无法解析，请手工删除（安装器不替你动块外内容）',
+      )
+    }
+  }
   const content = lines.join(eol)
+  // 写前 YAML 自检（传了 yaml 才做）：最终文件整体回验，坏内容一笔不写。
+  try {
+    if (yaml) yaml.parse(preprocessPatchText(content))
+  } catch (err) {
+    logger.warn?.(
+      `maoying-installer: ${target} 拼装结果未过 YAML 自检，已拒绝写盘` +
+        `（托管块之外多半有宿主也解不了的结构性坏行，请手工清理后重启自愈；本块内容已在上方逐字保留）: ${err?.message ?? err}`,
+    )
+    return 'rejected'
+  }
   // 写前重读对比（幂等强化）：首次读到真正写盘之间文件可能已被并发进程改成
   // 与目标一致的内容——已一致就不再写盘，省一次 mtime 抖动、也收窄交错写窗口。
   try {
-    if (readFileSync(patchPath, 'utf8') === content) return 'skipped'
+    if (readFileSync(target, 'utf8') === content) return 'skipped'
   } catch { /* 重读失败（文件被并发删/权限抖动）按首次写处理 */ }
   // 原子落盘：临时文件带 pid 命名，多进程各写各的临时件互不踩踏。
-  mkdirSync(dshHome, { recursive: true })
-  const tmpPath = path.join(dshHome, `.cordis.patch.yml.tmp-${process.pid}`)
+  mkdirSync(targetDir, { recursive: true })
+  const tmpPath = path.join(targetDir, `.cordis.patch.yml.tmp-${process.pid}`)
   writeFileSync(tmpPath, content, 'utf8')
   try {
-    renameSync(tmpPath, patchPath)
+    renameSync(tmpPath, target)
   } catch (err) {
     // rename 失败（极端：目标被锁/跨设备等）清掉自己的临时件后原样抛出，
     // 由调用方 warn 兜底——绝不让安装器炸宿主。
@@ -684,13 +838,65 @@ export function upsertManagedBlock(dshHome, blockText, { versionMarkerCurrent, l
 }
 
 /**
- * 清扫托管块临时件残留：upsertManagedBlock 在 writeFileSync 与 renameSync 之间
- * 崩溃（kill -9 / 断电）时，`.cordis.patch.yml.tmp-<pid>` 会永远留在 dsh home。
- * 仅在插件启动（apply 早期）顺带跑一次，纪律：
+ * 删除 home 层 <home>/cordis.patch.yml 里的本插件托管块（含起止标记），块外
+ * 用户内容一字节不动；写回沿用「同目录临时件 + renameSync 原子替换」纪律
+ *（临时件带 pid 命名，与 upsertManagedBlock 同款）。返回动作：
+ *   'removed' — 找到并已整段删除；
+ *   'absent'  — 文件不存在 / 无托管块 / 文件读不了（warn 留痕后按无需清理
+ *               处理）——都是 no-op；
+ *   'damaged' — 托管块损坏（只有起始标记、找不到结束标记）：warn、原文件
+ *               一字节不动、不炸主流程（升级清理是尽力而为，坏块留给人工，
+ *               或交给既有写路径的损坏即中止语义）。
+ * 用途：写入层切到 profile 层时清掉 home 层遗留托管块，防 home+profile 双
+ * 声明（issue #1 的升级路径）。rename 失败原样抛出，由调用方兜 try/catch。
+ */
+export function removeManagedBlockFromHome(home, { logger = console } = {}) {
+  const patchPath = path.join(home, 'cordis.patch.yml')
+  let text = null
+  try {
+    text = readFileSync(patchPath, 'utf8')
+  } catch (err) {
+    if (err?.code !== 'ENOENT') {
+      logger.warn?.(`maoying-installer: 读取 ${patchPath} 失败，跳过 home 层托管块清理: ${err?.message ?? err}`)
+    }
+    return 'absent'
+  }
+  const eol = text.includes('\r\n') ? '\r\n' : '\n'
+  const lines = text.split(/\r?\n/)
+  let span = null
+  try {
+    span = findManagedSpan(lines, { logger })
+  } catch (err) {
+    logger.warn?.(`maoying-installer: home 层托管块损坏，跳过清理（文件保持原样）: ${err?.message ?? err}`)
+    return 'damaged'
+  }
+  if (span === null) return 'absent'
+  lines.splice(span.begin, span.end - span.begin + 1)
+  const content = lines.join(eol)
+  const tmpPath = path.join(path.dirname(patchPath), `.cordis.patch.yml.tmp-${process.pid}`)
+  writeFileSync(tmpPath, content, 'utf8')
+  try {
+    renameSync(tmpPath, patchPath)
+  } catch (err) {
+    // rename 失败清掉自己的临时件后原样抛出——调用方（ensurePresetInstalled
+    // 第 4 步）兜 try/catch，绝不让清理动作炸宿主启动。
+    try { unlinkSync(tmpPath) } catch { /* 临时件清理失败无所谓，pid 命名不互踩 */ }
+    throw err
+  }
+  return 'removed'
+}
+
+/**
+ * 清扫托管块临时件残留：upsertManagedBlock / removeManagedBlockFromHome 在
+ * writeFileSync 与 renameSync 之间崩溃（kill -9 / 断电）时，
+ * `.cordis.patch.yml.tmp-<pid>` 会永远留在目标目录。仅在插件启动（apply 早期）
+ * 顺带跑一次，纪律：
  *   - 只认本插件的临时件命名（`.cordis.patch.yml.tmp-` 前缀 + 纯数字 pid 后缀，
  *     与 upsertManagedBlock 的命名一字不差），其余文件一概不碰；
  *   - mtime 超过 1 小时才删——正常写盘从建临时件到 rename 是毫秒级，1h 窗口
  *     绝不误杀并发进程正在写的临时件；
+ *   - 只扫 home 根：profile 层等自定义 patchPath 的临时件落各自目录（宿主管
+ *     理的目录不顺手扩面），崩溃残留概率极低且是纯注释性垃圾文件，无害；
  *   - 全程自吞错（目录读不到 / 单个 stat/unlink 失败都跳过）：清扫是顺手卫生，
  *     绝不能影响宿主启动，也不为它打日志刷屏。
  * @returns {number} 本次删除的残留临时件个数（测试与观察用）
@@ -1366,12 +1572,18 @@ export async function registerCreatorRoutes(ctx) {
  *   1) 预设文件落盘（不依赖 yaml，任何情况都先做）；
  *   2) .installed-version 标记（内容与当前版本一致即不重写）；
  *   3) 方法论技能落盘到 <home>/skills/maoying-*（不依赖 yaml，独立可失败）；
- *   4) home patch 托管块（依赖 yaml；形态随宿主版本，见 composeManagedRows；
+ *   4) patch 托管块（依赖 yaml；形态随宿主版本，见 composeManagedRows；写入
+ *      层随环境，见 resolvePatchLayer——Android compat 壳或
+ *      DSH_MAOYING_PATCH_LAYER=profile 时写 profile 层并清 home 层遗留块；
  *      yaml 缺席、组合源坏或宿主版本探测全败时跳过并 warn，下次启动自愈）。
+ * ctx.argv（可选）：层解析用的 argv 注入缝（resolveProfilePatchPath 找
+ *   --profile 用），缺省 process.argv。
  * 返回 { status, home, presetDir, copied, skillsCopied, blockAction, reason,
- * shape, hostVersion }，status 取 'ok'（全链路完成）| 'partial'（托管块未写，
- * 原因见 reason）；shape 为本次所选委派行形态（'v1' | 'v2'）；skillsCopied 为
- * 本次有复制动作的技能目录名列表。
+ * shape, hostVersion, patchLayer, patchPath }，status 取 'ok'（全链路完成）|
+ * 'partial'（托管块未写，原因见 reason）；shape 为本次所选委派行形态
+ *（'v1' | 'v2'）；skillsCopied 为本次有复制动作的技能目录名列表；patchLayer /
+ * patchPath 为托管块的目标层与目标文件（'rejected'/partial 时是「将要写」的
+ * 目标，供上层诊断）。
  */
 export function ensurePresetInstalled(ctx = {}) {
   const logger = ctx?.logger ?? console
@@ -1410,7 +1622,44 @@ export function ensurePresetInstalled(ctx = {}) {
     logger.warn?.(`maoying-installer: 技能落盘失败（已跳过，不影响预设本体）: ${err?.message ?? err}`)
   }
 
-  // 4) home patch 托管块（v1 内联形状 / v2 AgentPreset 形状，随宿主版本切换）
+  // 4) patch 托管块（v1 内联形状 / v2 AgentPreset 形状，随宿主版本切换）。
+  //    写入层随环境选择（resolvePatchLayer）：默认 home 层 <home>/cordis.patch
+  //    .yml；Android compat 壳每次启动会把 home 层 patch 重写坏（issue #1），
+  //    命中壳启发式或环境变量点名时改写 profile 层 <home>/profiles/<name>/
+  //    cordis.patch.yml（壳不碰该层，每次 boot 补写自愈）。profile 目录不存在
+  //    退回 home 层并 warn；home 层模式下若 profile patch 已有本插件托管块
+  //   （手工搬迁 / issue 作者本地补丁残留）只 warn 可能双声明，不自动删。
+  const homePatchPath = path.join(home, 'cordis.patch.yml')
+  let patchLayer = resolvePatchLayer(home)
+  let patchPath = homePatchPath
+  let profileName = null
+  if (patchLayer === 'profile') {
+    const profilePatchPath = resolveProfilePatchPath(home, ctx?.argv)
+    if (profilePatchPath === null) {
+      logger.warn?.(
+        'maoying-installer: 当前按 profile 层策略写托管块，但 <home>/profiles/<name>/ 目录不存在（profile 尚未创建？）——本次退回 home 层',
+      )
+      patchLayer = 'home'
+    } else {
+      patchPath = profilePatchPath
+      profileName = path.basename(path.dirname(profilePatchPath))
+    }
+  } else {
+    const profilePatchPath = resolveProfilePatchPath(home, ctx?.argv)
+    if (profilePatchPath !== null) {
+      let profileText = null
+      try {
+        profileText = readFileSync(profilePatchPath, 'utf8')
+      } catch { /* profile patch 不存在/读不了都无所谓——只做残留提示 */ }
+      if (profileText !== null && profileText.includes(MANAGED_BEGIN)) {
+        logger.warn?.(
+          `maoying-installer: home 层与 profile 层（${profilePatchPath}）疑似都有 dsh-maoying 托管块，可能双声明——请择一保留（安装器不替你删）`,
+        )
+      }
+    }
+  }
+  const layerLabel = patchLayer === 'profile' ? `profile 层（${profileName}）` : 'home 层'
+
   const composed = composeManagedRows(home, logger)
   const { shape, hostVersion } = composed
   if (composed.rows === null) {
@@ -1435,11 +1684,31 @@ export function ensurePresetInstalled(ctx = {}) {
       reason: composed.reason,
       shape,
       hostVersion,
+      patchLayer,
+      patchPath,
     }
   }
 
   const blockText = stringifyManagedBlock(composed.yaml, composed.rows)
-  const blockAction = upsertManagedBlock(home, blockText, { versionMarkerCurrent: markerCurrent, logger })
+  if (patchLayer === 'profile') {
+    // 升级清理：home 层遗留托管块整段删除，防 home+profile 双声明（宿主对两
+    // 层都挂 HMR，重复声明的实际后果是预设重复注册）。尽力而为——失败只
+    // warn，不挡本次 profile 层写入。
+    try {
+      if (removeManagedBlockFromHome(home, { logger }) === 'removed') {
+        logger.info?.('maoying-installer: 已清理 home 层遗留托管块（声明迁移到 profile 层）')
+      }
+    } catch (err) {
+      logger.warn?.(`maoying-installer: home 层遗留托管块清理失败（不影响本次 profile 层写入）: ${err?.message ?? err}`)
+    }
+  }
+  const blockAction = upsertManagedBlock(home, blockText, {
+    versionMarkerCurrent: markerCurrent,
+    logger,
+    patchPath,
+    yaml: composed.yaml,
+    presetName: composed.presetName,
+  })
 
   if (copied.length > 0) {
     logger.info?.(`maoying-installer: 预设文件已更新 ${PRESET_ID}: ${copied.join(', ')}`)
@@ -1448,18 +1717,20 @@ export function ensurePresetInstalled(ctx = {}) {
     logger.info?.(`maoying-installer: 方法论技能已落盘 <home>/skills: ${skillsCopied.join(', ')}`)
   }
   if (blockAction === 'skipped') {
-    logger.info?.(`maoying-installer: 预设 ${PRESET_ID} 已就绪（v${version}，声明行与文件均无变化）`)
+    logger.info?.(`maoying-installer: 预设 ${PRESET_ID} 已就绪（v${version}，声明行与文件均无变化，托管块位于 ${layerLabel}）`)
   } else if (blockAction === 'updated') {
-    logger.info?.(`maoying-installer: cordis.patch.yml 托管块已按 v${version} 重写`)
+    logger.info?.(`maoying-installer: 托管块已按 v${version} 重写（${layerLabel}: ${patchPath}）`)
   } else if (blockAction === 'created') {
-    logger.info?.(`maoying-installer: cordis.patch.yml 托管块已写入（v${version}）`)
+    logger.info?.(`maoying-installer: 托管块已写入 ${layerLabel}（v${version}）`)
   }
+  // blockAction === 'rejected'：写盘前 YAML 自检未过，upsertManagedBlock 已带
+  // 文件路径与解析错误 warn 过——这里不重复刷屏，动作经返回值透出，不抛。
   logger.info?.(
     shape === 'v2'
       ? `maoying-installer: 委派行形状 v2（AgentPreset，宿主 DSH ${hostVersion ?? '版本未知'}）`
       : `maoying-installer: 委派行形状 v1（内联 persona/toolFilter，宿主 DSH ${hostVersion ?? '版本未知'}）`,
   )
-  return { status: 'ok', home, presetDir, copied, skillsCopied, blockAction, reason: null, shape, hostVersion }
+  return { status: 'ok', home, presetDir, copied, skillsCopied, blockAction, reason: null, shape, hostVersion, patchLayer, patchPath }
 }
 
 /**

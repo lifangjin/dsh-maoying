@@ -29,7 +29,7 @@
 dsh plugin --profile web add dsh-maoying
 ```
 
-**重启 DSH（`dsh web`）**：插件启动时自动把预设装进 `~/.dsh/.agent-presets/maoying/`，并在 `~/.dsh/cordis.patch.yml` 写好声明行托管块，无需再点任何按钮。新会话的预设选择器里选「**毛颖创作 (Maoying)**」即可开写；要设为默认，在 Settings → Agent Presets 里选。
+**重启 DSH（`dsh web`）**：插件启动时自动把预设装进 `~/.dsh/.agent-presets/maoying/`，并写好声明行托管块，无需再点任何按钮。托管块写入层自动选择：桌面/服务器默认写 home 级 `~/.dsh/cordis.patch.yml`；Android compat 壳环境（该壳每次启动会把 home 级 patch 重写坏）自动改写 profile 级 `~/.dsh/profiles/<name>/cordis.patch.yml`——壳不碰 profile 层，插件每次启动补写自愈，并顺手清掉 home 级遗留托管块防双声明；也可用环境变量 `DSH_MAOYING_PATCH_LAYER=home|profile` 强制指定。新会话的预设选择器里选「**毛颖创作 (Maoying)**」即可开写；要设为默认，在 Settings → Agent Presets 里选。
 
 开发检出（想改插件或预设源码）用 link 形态直连仓库，改动经重启生效：
 
@@ -157,7 +157,7 @@ rm -rf "${DSH_HOME:-$HOME/.dsh}/.agent-presets/maoying"
 rm -rf "${DSH_HOME:-$HOME/.dsh}/skills/"maoying-*
 ```
 
-宿主是 DSH 0.1.7+ 时再补一步：删去 `~/.dsh/cordis.patch.yml` 里的 dsh-maoying 托管块（`# --- dsh-maoying preset managed (auto-generated; do not edit) ---` 到 `# --- end dsh-maoying preset managed ---` 之间的整段，含两行标记），免得留下指向已删目录的声明行。`novel/` 目录是你的书稿，卸载插件不会动它。
+宿主是 DSH 0.1.7+ 时再补一步：删去 `~/.dsh/cordis.patch.yml` 里的 dsh-maoying 托管块（`# --- dsh-maoying preset managed (auto-generated; do not edit) ---` 到 `# --- end dsh-maoying preset managed ---` 之间的整段，含两行标记），免得留下指向已删目录的声明行；Android compat 壳上托管块写在 profile 层，`~/.dsh/profiles/<name>/cordis.patch.yml` 里的同名托管块也照此删除。`novel/` 目录是你的书稿，卸载插件不会动它。
 
 ## 兼容面
 

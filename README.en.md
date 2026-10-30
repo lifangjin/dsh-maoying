@@ -29,7 +29,7 @@ The official plugin channel — one command, then restart:
 dsh plugin --profile web add dsh-maoying
 ```
 
-**Restart DSH (`dsh web`)**: at startup the plugin installs the preset into `~/.dsh/.agent-presets/maoying/` and writes the managed declaration block into `~/.dsh/cordis.patch.yml` — no buttons to press. Pick "**毛颖创作 (Maoying)**" in the preset selector of a new session; to make it default, select it in Settings → Agent Presets.
+**Restart DSH (`dsh web`)**: at startup the plugin installs the preset into `~/.dsh/.agent-presets/maoying/` and writes the managed declaration block — no buttons to press. The block's patch layer is picked automatically: desktop/server installs write the home-level `~/.dsh/cordis.patch.yml`; on the Android compat shell (which mangles the home-level patch on every start) the plugin writes the profile-level `~/.dsh/profiles/<name>/cordis.patch.yml` instead — the shell never touches that layer, so the plugin re-writes it on each boot to self-heal and removes the stale home-level block to avoid double declarations. Set `DSH_MAOYING_PATCH_LAYER=home|profile` to override. Pick "**毛颖创作 (Maoying)**" in the preset selector of a new session; to make it default, select it in Settings → Agent Presets.
 
 For a development checkout (you want to modify the plugin or preset sources), link the repo directly; changes take effect after a restart:
 
@@ -157,7 +157,7 @@ rm -rf "${DSH_HOME:-$HOME/.dsh}/.agent-presets/maoying"
 rm -rf "${DSH_HOME:-$HOME/.dsh}/skills/"maoying-*
 ```
 
-On DSH 0.1.7+ also delete the dsh-maoying managed block in `~/.dsh/cordis.patch.yml` (the whole section between `# --- dsh-maoying preset managed (auto-generated; do not edit) ---` and `# --- end dsh-maoying preset managed ---`, markers included), so no declaration lines point at a deleted directory. The `novel/` directory is your manuscript — uninstalling never touches it.
+On DSH 0.1.7+ also delete the dsh-maoying managed block in `~/.dsh/cordis.patch.yml` (the whole section between `# --- dsh-maoying preset managed (auto-generated; do not edit) ---` and `# --- end dsh-maoying preset managed ---`, markers included), so no declaration lines point at a deleted directory; on the Android compat shell the block lives in the profile layer — delete the same managed block from `~/.dsh/profiles/<name>/cordis.patch.yml` as well. The `novel/` directory is your manuscript — uninstalling never touches it.
 
 ## Compatibility
 
