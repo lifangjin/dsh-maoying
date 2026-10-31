@@ -1005,7 +1005,9 @@ test('checkProject：章纲缺「钩子」小节——无钩子标题给 warn，
 
 test('checkChapterStyle：AI 味统计三指标各自命中，干净正文零消息', () => {
   // 三条指标互相独立：逐条构造只命中一条的正文，消息逐字对齐
-  assert.deepEqual(checkChapterStyle(STYLE_REPEAT_BODY), [`疑似句式重复：连续 ${STYLE_REPEAT_RUN} 句以「他知」开头`])
+  assert.deepEqual(checkChapterStyle(STYLE_REPEAT_BODY), [
+    `疑似句式重复：连续 ${STYLE_REPEAT_RUN} 句以「他知」（U+4ED6 U+77E5）开头`,
+  ])
   assert.deepEqual(checkChapterStyle(STYLE_METAPHOR_BODY), [
     `比喻词密度偏高：3 处 / 0.1千字（阈值 ${STYLE_METAPHOR_PER_KILO}/千字）——AI 味风险`,
   ])
@@ -1025,6 +1027,23 @@ test('checkChapterStyle：AI 味统计三指标各自命中，干净正文零消
     assert.equal(styleWarns.length, 1)
     assert.equal(styleWarns[0].file, 'chapters/v01-c001.md')
   })
+})
+
+test('checkChapterStyle：对话排版「。”+换行+新段」不误报句式重复；命中消息转义并附码点', () => {
+  // ① 排版误报回归：三段对话「……”\n　　XX……」——旧逻辑取句内换行当前缀（”\n）连成
+  //    3 连段误报；新逻辑前缀跳过空白后为 ”汉 / ”孟 / ”他 各不相同，不得报句式重复
+  const layoutBody = [
+    '“先别动。”\n　　汉子把刀又压低了半寸。',
+    '“凭什么！”\n　　孟把头梗着脖子不肯退。',
+    '“都住口。”\n　　他一巴掌拍在桌沿上。',
+    '天亮之前，一切都还来得及补救。',
+  ].join('\n')
+  const layoutMessages = checkChapterStyle(layoutBody)
+  assert.equal(layoutMessages.some((m) => m.includes('疑似句式重复')), false)
+  // ② 码点展示：三句跳过空白后同以 ”汉 开头（”=U+201D、汉=U+6C49），
+  //    消息里引号附码点可分辨，逐字对齐
+  const quoteBody = '“进来。”汉子把门闩上了。”汉子转身添了柴。”汉子又吹了灯。'
+  assert.deepEqual(checkChapterStyle(quoteBody), [`疑似句式重复：连续 ${STYLE_REPEAT_RUN} 句以「”汉」（U+201D U+6C49）开头`])
 })
 
 test('checkProject：num 手写成单引号字符串与文件名章号不再误报不一致', () => {
