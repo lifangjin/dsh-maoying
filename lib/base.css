@@ -463,9 +463,13 @@ html[data-dsh-maoying-active]:not([data-dsh-mnemon-active]):not([data-dsh-taskbo
 
 /* ── 0.1.19 引入正文/章纲面板编辑态；0.1.22 起正文自动保存（防抖 0.1.23 起 30s）─
    编辑态与只读态的区分靠主题色边框强调（只读态是无边框淡底的
-   .myt-chapterBody pre）；正文 textarea 排版与只读正文对齐（同 UI 字体、
+   .myt-chapterBody pre）；正文 textarea 排版与只读正文对齐（默认同 UI 字体、
    13px/22px 行高）所见即所得，高度随内容自动长高——当年的等宽字体 +
-   resize: vertical 已成史。章纲编辑区（.myt-outlineArea）仍手动保存。 */
+   resize: vertical 已成史。章纲编辑区（.myt-outlineArea）仍手动保存。
+   字体可选（未发版起）：工具行下拉六档（系统默认/黑体/宋体/楷体/仿宋/霞鹜
+   文楷），编辑器（textarea 与镜像）与只读正文 pre 由 editFontStack 单源下发
+   同款 fontFamily（inline 覆盖下面各处的 inherit 兜底；系统默认不下发走
+   inherit）——阅读与书写同源同字体，行号镜像测量不因换字错位（同值前提）。 */
 .myt-bodyEdit { display: flex; flex-direction: column; gap: 8px; }
 /* ── 0.1.26 行号栏：gutter + 编辑区一体卡；镜像 div 同排版规则供测量 ──
    行号必须对逻辑行：正文一行一段、段落很长，软换行把一个逻辑行折成多个
@@ -514,6 +518,22 @@ html[data-dsh-maoying-active]:not([data-dsh-mnemon-active]):not([data-dsh-taskbo
 .myt-editTools .myt-btn { padding: 2px 8px; font-size: 11px; line-height: 16px; }
 .myt-editFsPct { font-size: 11px; line-height: 16px; color: var(--dsw-alias-label-tertiary); font-variant-numeric: tabular-nums; }
 .myt-editToolsSep { font-size: 11px; color: var(--dsw-alias-label-tertiary); }
+/* 编辑器字体下拉（未发版）：与 A−/A+ 同族 11px 小控件，非全屏工具行与全屏
+   头部共用一个 class；max-width 防长字体名撑爆工具行，溢出交原生 select 截断。 */
+.myt-editFontSel {
+  box-sizing: border-box;
+  max-width: 11em;
+  height: 22px; /* 与工具行 .myt-btn（2px 8px + 16px 行高 + 边框）同视觉高 */
+  padding: 0 4px;
+  border: 1px solid var(--dsw-alias-border-l1);
+  border-radius: 6px;
+  background: var(--dsw-alias-bg-layer-2);
+  color: var(--dsw-alias-label-primary);
+  font-family: inherit;
+  font-size: 11px;
+  line-height: 16px;
+  cursor: pointer;
+}
 .myt-editFsOverlay {
   position: absolute; /* 实例根即定位上下文（同 .myt-modalMask，portal 进实例根） */
   inset: 0;
@@ -567,7 +587,7 @@ html[data-dsh-maoying-active]:not([data-dsh-mnemon-active]):not([data-dsh-taskbo
   border-radius: 0 10px 10px 0; /* 左平右圆：左缘贴行号栏拼一张卡 */
   background: var(--dsw-alias-bg-layer-1, var(--dsw-alias-bg-layer-2));
   color: var(--dsw-alias-label-primary);
-  font-family: inherit; /* 所见即所得：与 .myt-chapterBody 同 UI 字体 */
+  font-family: inherit; /* 所见即所得：与 .myt-chapterBody 同字体（可选字体经 inline 单源下发时覆盖此兜底） */
   font-size: 13px;
   line-height: 22px; /* 与 .myt-chapterBody 一致 */
   white-space: pre-wrap; /* 显式钉住换行规则——镜像测量的对齐前提 */
