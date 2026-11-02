@@ -193,7 +193,7 @@ references:               # 依据来源，一行一个（已知设定 id 或现
 叙事记忆：正文里已成立的事实账。`appearance` 是出场记录（谁在哪章登过场），`promise` 是角色说出口的承诺（读者记着账），`arc` 是卷级剧情梗概（一卷一条，卷末凝固，写定不再重写）。只记已写进正文的事实，不记计划。
 
 ```yaml
-- category: appearance    # character|location|item|event|promise|appearance|other
+- category: appearance    # character|location|item|event|promise|appearance|arc|other
   content: 林晚儿于 v01-c003 首次登场，与主角在当铺交锋
   source_chapter: v01-c003
 ```

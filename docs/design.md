@@ -24,7 +24,8 @@ dsh-maoying/
   icon.svg
   presets/maoying/        # 预设源（会被复制到 ~/.dsh/.agent-presets/maoying/）
     preset.yml            #   name/description/order
-    agent.cordis.yml      #   完整组合：主编人设 + 5 角色委派 + 工具行
+    agent.cordis.yml      #   完整组合：主编人设 + 5 角色委派 + 工具行（v1 内联形状）
+    agent.cordis.v2.yml   #   v2 AgentPreset 组合源（0.2.1-rc.2+ 用；不复制，插件目录直读）
     restrict.mjs          #   主编工具面白名单（system-prompt/assemble 瀑布）
     delegation-labels.mjs #   委派标签带角色显示名（tools/pre-execute 瀑布）
   bin/maoying.mjs         # CLI：init / stats / index / export / brief / check
