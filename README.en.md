@@ -9,7 +9,7 @@ Once installed, the main agent becomes the **editor-in-chief of your novel**: it
 ## Features
 
 - **Editor-in-chief + five helpers**: the main agent plans, connects, reviews and advances states; the outliner (outline), writer (write), reviewer (review), lore keeper (lore) and researcher (research) each carry their own tools. Trivial errands like finding a file or checking a foreshadow status, the chief handles itself with glob/grep.
-- **novel/ as a file database**: character cards, worldbuilding & science settings with three-color tags, relations graph, foreshadow ledger, timeline, narrative memory, clue board — all grep-friendly flat-key/top-level-array YAML, human-editable, git-versioned, no migrations, no ops.
+- **novel/ as a file database**: character cards, worldbuilding & science settings with three-color tags, relations graph, foreshadow ledger, timeline, narrative memory, clue board, decisions ledger — all grep-friendly flat-key/top-level-array YAML, human-editable, git-versioned, no migrations, no ops.
 - **Seven-phase workflow**: idea → setting → outline → writing → review → consistency → export. The phase lives in the `phase` key of project.yml; the chief advances it at each milestone and reports to you, with completion gates (core settings saved; volume plan and the target chapter outline in place before writing) — unmet, it steps back a phase.
 - **Writing six-step method**: continuity check → outline → draft → review → revision → finalization, looping per chapter; paired with the Collab four-step co-writing flow (setting co-creation → volume planning → golden three chapters → handoff loop) it takes a new book from zero to rolling updates; the setting digest and the volume plan each get a user sign-off, and the golden three chapters wait until settings are locked.
 - **Foreshadowing state machine**: planted → progressing → resolved / abandoned, with planting and payoff chapter numbers, expected-payoff scheduling and priority tiers — a long serial never drops a thread; past 15 active foreshadowing entries the chief proactively suggests cleanup.
@@ -96,7 +96,7 @@ The author-draft loop — you just write, hand it over, and the chores are taken
 
 After receiving a manuscript you get three things: a **review checklist** (issues only, no rewriting — applying them is up to you), a **ledger backfill** (foreshadowing / timeline / relations / memory / clue board recorded from what your text actually does, even off-plan changes, tagged `backfill`), and the **next chapter outline** (`novel/outlines/vXX-cXXX.md`, ready to write from).
 
-Companion commands: `maoying brief <dir> <chapter>` packs a per-chapter writing card (outline + previous ending + character cards + active foreshadowing — carry it to any editor or AI), and `maoying check <dir>` runs a zero-model static check (frontmatter completeness, foreshadow chapter refs & staleness, outline hook section, timeline ordering, AI-flavor stats (repeated openers / metaphor density / sentence-length flatness), phase readiness gates — no model calls; LLM review goes through the chief).
+Companion commands: `maoying brief <dir> <chapter>` packs a per-chapter writing card (outline + previous ending + character cards + active foreshadowing — carry it to any editor or AI), and `maoying check <dir>` runs a zero-model static check (frontmatter completeness, foreshadow chapter refs & staleness, outline hook section, timeline ordering, AI-flavor stats (repeated openers / metaphor density / sentence-length flatness), decisions-ledger checks, phase readiness gates — no model calls; LLM review goes through the chief).
 
 ## Methodology Skills
 
@@ -120,7 +120,7 @@ rm -rf "${DSH_HOME:-$HOME/.dsh}/skills/"maoying-*
 
 ## The novel/ Data Spec
 
-The `novel/` directory is the plugin's entire database: project.yml (metadata + seven-phase state), style.md (the writing style baseline), volumes.yml, chapters/ (frontmatter five narrative dimensions + prose), characters/ (character cards), world/, science/ (three-color settings), relations.yml, foreshadows.yml (the state machine), timeline.yml, memories.yml (with appearance records and the promise ledger), clue-board.yml, research/, exports/. Full formats, examples and design rationale:
+The `novel/` directory is the plugin's entire database: project.yml (metadata + seven-phase state), style.md (the writing style baseline), volumes.yml, chapters/ (frontmatter five narrative dimensions + prose), characters/ (character cards), world/, science/ (three-color settings), relations.yml, foreshadows.yml (the state machine), timeline.yml, memories.yml (with appearance records and the promise ledger), clue-board.yml, decisions.yml (the decisions ledger), research/, exports/. Full formats, examples and design rationale:
 
 - Quick reference: `novel/README.md` after project init (template source: [templates/novel/README.md](templates/novel/README.md))
 - Full spec: [docs/spec.md](docs/spec.md) (why not SQLite, five-dimension field definitions, foreshadow state-machine semantics, appearance-record conventions)
@@ -133,7 +133,7 @@ maoying stats [dir]    # per-chapter CJK counts, status breakdown, current phase
 maoying index [dir]    # rebuild index.yml from volumes.yml + chapters/ (derived file)
 maoying export [dir]   # export the book: --format md|txt|epub (default md), --out <dir> to change destination
 maoying brief [dir] <chapter>  # pack a per-chapter writing card (outline + previous ending + character cards + active foreshadowing); --out to write to disk, stdout by default
-maoying check [dir]    # static check (no model calls): frontmatter / enums / chapter numbers / foreshadow refs & staleness / outline hooks / AI-flavor stats / timeline years / relation-card refs / phase readiness gates
+maoying check [dir]    # static check (no model calls): frontmatter / enums / chapter numbers / foreshadow refs & staleness / outline hooks / AI-flavor stats / timeline years / relation-card refs / decisions-ledger checks / phase readiness gates
 ```
 
 Export examples:

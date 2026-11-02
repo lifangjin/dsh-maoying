@@ -160,7 +160,7 @@ references:               # 依据来源，一行一个（已知设定 id 或现
 
 ## foreshadows.yml
 
-伏笔账本（状态机语义见上文「总原则」的伏笔状态枚举）。埋设与回收必须记章节号；活跃伏笔（planted/progressing）超过 15 条时应提醒清理。
+伏笔账本（状态机语义见上文「总原则」的伏笔状态枚举）。埋设与回收必须记章节号；活跃伏笔（planted/progressing）超过清理阈值（默认 15 条，可在 style.md「节奏」节另定）时应提醒清理。
 
 ```yaml
 - id: fs-001              # 编号不复用
@@ -209,6 +209,19 @@ references:               # 依据来源，一行一个（已知设定 id 或现
   resolved: false          # 误导揭示/悬问解答/推理兑现后置 true
 ```
 
+## decisions.yml
+
+拍板账：用户方向性决策的流水账，主编在拍板点（设定共创、分卷规划、基调与金手指变更、共创模式切换）经用户确认后追加，只增不改（写错由主编裁决后修正并留 notes）。作用：拍板即授权范围——越出既有拍板范围的重大变更须先再拍板；审校与主编对照本账核对「改动是否越权」。
+
+```yaml
+- id: dec-001            # 编号不复用
+  topic: 分卷规划         # 决策点
+  decision: 第一卷 001-020 北境线，卷末雪灾大战
+  scope: v01             # 可选：影响范围（卷号/章节号/全书）
+  date: 2026-11-02       # YYYY-MM-DD
+  source: chat           # chat（对话拍板）| panel（面板操作），缺省 chat
+```
+
 ## research/
 
 素材调研员的考据笔记（`<topic>.md`）：frontmatter 记 `topic` 与 `sources`（来源 URL 列表），body 是可直接用于写作的结论要点，区分史实/通说/演义并标注可信度。其余角色不改动此目录。
@@ -216,3 +229,7 @@ references:               # 依据来源，一行一个（已知设定 id 或现
 ## exports/
 
 导出产物：`maoying export` 的默认落盘点（--format md|txt|epub，--out 可改到别处），init 只建目录。
+
+## README.md
+
+本文件即这份速查自身（`maoying init` 时拷入项目 `novel/README.md`）：本目录每个文件在这里都要有一节，速查本体也不例外——新增、改名或删除本目录文件时同步维护对应节，文件与节双向对账。

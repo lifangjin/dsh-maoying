@@ -98,6 +98,9 @@ planted ──→ progressing ──→ resolved
 ### clue-board.yml
 `kind` 四类：`clue`（线索）`red-herring`（误导）`deduction`（推理）`question`（悬问）。`resolved: true` 表示该线索的戏剧功能已兑现——误导被揭示、悬问被解答、推理被验证。红鲱鱼（red-herring）必须有意埋设，`content` 里写明「误导什么、真答案是什么」，防止审校误报。
 
+### decisions.yml
+拍板账（Mandate 思路）：用户方向性决策的流水账，字段与最小示例见速查版。设计理由：方向性拍板（设定共创、分卷规划、基调与金手指变更、共创模式切换）是用户对创作方向的授权记录，落盘成 grep 友好的流水账后，「这次改动是否越出拍板范围」从记忆问题变成查账问题——审校与主编对照本账核对改动是否越权。约定：只增不改，写错由主编裁决后修正并留 notes；主编在拍板点经用户确认后落账；`maoying check` 做 id 重复、date 格式、source 枚举的静态校验；不影响 phase/status 状态机。
+
 ### research/ 与 exports/
 `research/<topic>.md` 由素材调研员（research 角色）独占写入；frontmatter 记 `topic` 与 `sources`（URL 列表），body 是可直接用于写作的结论要点，区分史实/通说/演义并逐条附来源。`exports/` 是 `maoying export` 的默认产物目录（`--out` 可改到别处）：`maoying export [dir] --format md|txt|epub`，文件名 `<书名>-<YYYYMMDD>.<ext>`，同名自动加序号不覆盖。
 
@@ -139,6 +142,6 @@ total: {chapters: 21, words: 65210, accepted: 18}
 - `maoying index` 是第 3 节重建逻辑的人工兜底（主编的日常路径是让 lore 角色直接重建）；
 - `maoying export [dir]` 导出全书为 md / txt / epub（默认 md；`--out` 改输出目录，缺省 `<dir>/exports/`）；
 - `maoying brief [dir] <chapter>` 组装单章写作卡（章纲 + 前章结尾 + 出场角色卡 + 活跃伏笔）；`--out <文件>` 落盘，缺省打到 stdout；
-- `maoying check [dir]` 静态体检（不调模型）：frontmatter 完整性与重复键（重复 warn）、枚举值（章节 status/writer、伏笔 status/source、记忆 category、线索 kind、project mode/phase）、章号卷号一致、伏笔账本全项（planted/resolved 章号引用存在性、id 重复、状态自洽——resolved 必填 resolved_chapter 且不得早于 planted、expected_resolve 只查格式不查存在性）、伏笔超期未推进（planted 超 30 章无进展即 warn）、volumes id 重复、章纲钩子小节缺失、时间线年份与 chapter 引用、记忆 category 与 source_chapter 引用、线索 kind 与 related_chapter 引用、关系 started/ended 引用、AI 味统计（连续同式开头/比喻词密度/句长波动，命中即 warn），并把本节 phase 完成判据落成静态检查——phase 到 outline 及之后仍缺主角卡/核心反派卡/世界观条目/分卷规划，或有两张及以上角色卡而 relations.yml 为空，即报 error（判据不满足回上一阶段补齐）。
+- `maoying check [dir]` 静态体检（不调模型）：frontmatter 完整性与重复键（重复 warn）、枚举值（章节 status/writer、伏笔 status/source、记忆 category、线索 kind、project mode/phase）、章号卷号一致、伏笔账本全项（planted/resolved 章号引用存在性、id 重复、状态自洽——resolved 必填 resolved_chapter 且不得早于 planted、expected_resolve 只查格式不查存在性）、伏笔超期未推进（planted 超 30 章无进展即 warn）、volumes id 重复、章纲钩子小节缺失、时间线年份与 chapter 引用、记忆 category 与 source_chapter 引用、线索 kind 与 related_chapter 引用、关系 started/ended 引用、拍板账（id 重复、date 格式、source 枚举）、AI 味统计（连续同式开头/比喻词密度/句长波动，命中即 warn），并把本节 phase 完成判据落成静态检查——phase 到 outline 及之后仍缺主角卡/核心反派卡/世界观条目/分卷规划，或有两张及以上角色卡而 relations.yml 为空，即报 error（判据不满足回上一阶段补齐）。
 
 六者都零依赖，解析器只认本规范的两类形态（平键映射、顶层数组）；深度嵌套不在支持范围——这是规范约束的执行手段之一。

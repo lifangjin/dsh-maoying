@@ -9,7 +9,7 @@
 ## 功能特性
 
 - **主编 + 五帮手**：主 agent 当主编，只做规划、衔接、验收、状态推进；大纲师（outline）、写手（write）、审校（review）、设定管理员（lore）、素材调研员（research）各带本行工具随叫随到。找文件、查伏笔状态这类顺手小事主编自己 glob/grep 就办，不绕委派。
-- **novel/ 文件数据库**：角色卡、世界观、科学设定三色标注、关系图、伏笔账本、时间线、叙事记忆、线索板，全部是 grep 友好的平键/顶层数组 YAML——人可直接改，git 可版本化，无迁移无运维。
+- **novel/ 文件数据库**：角色卡、世界观、科学设定三色标注、关系图、伏笔账本、时间线、叙事记忆、线索板、拍板账，全部是 grep 友好的平键/顶层数组 YAML——人可直接改，git 可版本化，无迁移无运维。
 - **七阶段工作流**：idea 选题 → setting 设定 → outline 大纲 → writing 写作 → review 审阅 → consistency 一致性 → export 导出。阶段记在 project.yml 的 phase 键，每完成一个里程碑主编推进并简报；推进有完成判据（核心设定落盘、分卷规划与目标章大纲在案才进 writing），不满足就回上一阶段补齐。
 - **Writing 六步法**：衔接检查 → 出大纲 → 写正文 → 审稿 → 修改 → 定稿维护，逐章循环；配合 Collab 四步共创（设定共创 → 分卷规划 → 黄金三章 → 交接循环）把新书从零带到滚动更新；设定一览与分卷规划各设一个用户拍板点，前三章在设定齐备前不开工。
 - **伏笔状态机**：planted（埋设）→ progressing（推进）→ resolved（回收）/ abandoned（弃用），埋设与回收记章节号、预期回收章节排期、优先级分档——长篇不断线，活跃伏笔超 15 条主编主动提醒清理。
@@ -96,7 +96,7 @@ author-draft 下的协作循环——你只管写，交稿即接管杂务：
 
 主编收稿后你会拿到三样东西：**审校意见清单**（只挑问题、不代改，改不改随你）、**账本回填**（伏笔/时间线/关系/记忆/线索五本账按你正文实际发生的记，计划外的改动也能认领，来源标 `backfill`）、**下一章章纲**（`novel/outlines/vXX-cXXX.md`，拿着就能写）。圣域纪律：`chapters/` 正文唯作者可改，agent 至多更新 frontmatter 的 summary 与五维字段，且先建议后动手。
 
-配套命令：`maoying brief <dir> <章号>` 打包写作卡（章纲 + 前章结尾 + 角色卡 + 活跃伏笔，带去任意编辑器或其他 AI），`maoying check <dir>` 做零模型静态体检（frontmatter 完整性、伏笔章号引用与超期、章纲钩子小节、时间线乱序、AI 味统计（句式重复/比喻密度/句长节奏）等，不调模型——LLM 审校走主编）。
+配套命令：`maoying brief <dir> <章号>` 打包写作卡（章纲 + 前章结尾 + 角色卡 + 活跃伏笔，带去任意编辑器或其他 AI），`maoying check <dir>` 做零模型静态体检（frontmatter 完整性、伏笔章号引用与超期、章纲钩子小节、时间线乱序、AI 味统计（句式重复/比喻密度/句长节奏）、拍板账校验等，不调模型——LLM 审校走主编）。
 
 ## 方法论技能
 
@@ -120,7 +120,7 @@ rm -rf "${DSH_HOME:-$HOME/.dsh}/skills/"maoying-*
 
 ## novel/ 数据规范
 
-`novel/` 目录是整个插件的数据库：project.yml（元信息与七阶段 phase）、style.md（写作风格基准）、volumes.yml、chapters/（frontmatter 五维叙事字段 + 正文）、characters/（角色卡）、world/、science/（三色设定）、relations.yml、foreshadows.yml（伏笔状态机）、timeline.yml、memories.yml（出场记录、承诺账、卷级梗概）、clue-board.yml、research/、exports/。全部格式、示例与设计理由见：
+`novel/` 目录是整个插件的数据库：project.yml（元信息与七阶段 phase）、style.md（写作风格基准）、volumes.yml、chapters/（frontmatter 五维叙事字段 + 正文）、characters/（角色卡）、world/、science/（三色设定）、relations.yml、foreshadows.yml（伏笔状态机）、timeline.yml、memories.yml（出场记录、承诺账、卷级梗概）、clue-board.yml、decisions.yml（拍板账）、research/、exports/。全部格式、示例与设计理由见：
 
 - 速查版：项目初始化后的 `novel/README.md`（模板源 [templates/novel/README.md](templates/novel/README.md)）
 - 完整版：[docs/spec.md](docs/spec.md)（为什么不用 SQLite、五维字段定义、伏笔状态机语义、出场记录约定）
@@ -133,7 +133,7 @@ maoying stats [dir]    # 逐章 CJK 字数、状态分布、当前 phase
 maoying index [dir]    # 从 volumes.yml + chapters/ 重建 index.yml（派生文件）
 maoying export [dir]   # 导出全书：--format md|txt|epub（默认 md），--out <目录> 改输出位置
 maoying brief [dir] <chapter>  # 组装单章写作卡（章纲+前章结尾+角色卡+活跃伏笔）；--out 落盘，缺省 stdout
-maoying check [dir]    # 静态体检（不调模型）：frontmatter/枚举/章号/伏笔引用与超期/章纲钩子/AI 味统计/时间线年份/关系卡引用/phase 就绪判据
+maoying check [dir]    # 静态体检（不调模型）：frontmatter/枚举/章号/伏笔引用与超期/章纲钩子/AI 味统计/时间线年份/关系卡引用/拍板账校验/phase 就绪判据
 ```
 
 export 示例：
