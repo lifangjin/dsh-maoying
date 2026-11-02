@@ -89,6 +89,7 @@ personality: 谨慎，记账式待人
 background: 当铺孤女，识得古物
 motivation: 赎回祖屋
 arc: 从旁观者到执棋人
+psychology: 总轴：从戒备到托付；分段：v01 独来独往 → 动摇 → 决意执棋
 markers:
   - 紧张时摩挲袖口
   - 说话前先抿嘴

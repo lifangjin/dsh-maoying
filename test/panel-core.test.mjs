@@ -153,11 +153,12 @@ test('parseStateSnapshot（回退解析）：§3 契约字段逐一就位', () =
   const lin = snap.characters.find((c) => c.file === 'lin-waner.md')
   assert.deepEqual(Object.keys(lin).sort(), [
     'age', 'appearance', 'arc', 'background', 'file', 'gender',
-    'markers', 'motivation', 'name', 'personality', 'role',
+    'markers', 'motivation', 'name', 'personality', 'psychology', 'role',
   ].sort())
   assert.equal(lin.name, '林晚儿')
   assert.equal(lin.age, 19)
   assert.equal(lin.role, 'supporting')
+  assert.equal(lin.psychology, '总轴：从戒备到托付；分段：v01 独来独往 → 动摇 → 决意执棋')
   assert.deepEqual(lin.markers, ['紧张时摩挲袖口', '说话前先抿嘴'])
 
   // relations：端点归一——契约里的 slug（lin-waner/shen-mo）出快照时改写成角色

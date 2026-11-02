@@ -92,7 +92,7 @@ novel/
                        #   正文在 body。status: pending|writing|review|accepted
   characters/
     <slug>.md          # frontmatter: name/age/gender/role(protagonist|antagonist|supporting|minor)/
-                       #   appearance/personality/background/motivation/arc/markers[]/可选 never_do[]；body 为备注
+                       #   appearance/personality/background/motivation/arc/psychology/markers[]/可选 never_do[]；body 为备注
   world/
     <slug>.md          # frontmatter: category(地点|组织|概念|事件)/tags[]；body 为描述
   science/
