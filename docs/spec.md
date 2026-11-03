@@ -44,7 +44,7 @@
   - `world_texture` 世界质感：本章着墨的世界细节层面（风物/规矩/器物/习俗）。逐章小剂量投放，避免设定集中倾泻。
   - `suspense` 具体悬念：本章悬念与章尾钩子的问题化表述（必须是「读者会问出的问题」，不是「作者知道的事实」）。
   - `interpersonal_tension` 人际张力：本章人物关系中的压力与变化（谁与谁的矛盾升温/缓和/变质）。
-- 五维字段在大纲阶段（outline 角色）写定、写作阶段（write 角色）覆盖、审校阶段（review 角色）对照——三处都用同一组键，这就是「按大纲写」的可检查形态。
+- 五维字段在大纲阶段（outline 角色）写定、写作阶段（draft 角色）覆盖、审校阶段（review 角色）对照——三处都用同一组键，这就是「按大纲写」的可检查形态。
 - 可选 `writer` 键（co-write 用）：`author | ai`，记本章正文归谁写；缺省按 project.yml 的 `mode` 推——`author-draft` 下整本按 author、`ai-draft` 下整本按 ai。键只做记录与消费：`maoying brief` 写作卡「本章状态」节照录原值、`maoying check` 校验越枚举（合法值 `author|ai`）；不进创作台面板快照（快照 chapters 无此键），状态机仍看 `status`。
 
 ### outlines/vXX-cXXX.md
@@ -105,7 +105,7 @@ planted ──→ progressing ──→ resolved
 `research/<topic>.md` 由素材调研员（research 角色）独占写入；frontmatter 记 `topic` 与 `sources`（URL 列表），body 是可直接用于写作的结论要点，区分史实/通说/演义并逐条附来源。`exports/` 是 `maoying export` 的默认产物目录（`--out` 可改到别处）：`maoying export [dir] --format md|txt|epub`，文件名 `<书名>-<YYYYMMDD>.<ext>`，同名自动加序号不覆盖。
 
 ### 作者稿圣域（共创模式）
-`chapters/` 目录的正文唯作者可改。author-draft / co-write 的 author 章节上，agent（主编与帮手）只可更新 frontmatter 的 `summary` 与五维字段，且以建议为先、动笔前说明；review 一律只出意见清单不改稿。`ai-draft` 章节不受此限，write 照旧。
+`chapters/` 目录的正文唯作者可改。author-draft / co-write 的 author 章节上，agent（主编与帮手）只可更新 frontmatter 的 `summary` 与五维字段，且以建议为先、动笔前说明；review 一律只出意见清单不改稿。`ai-draft` 章节不受此限，draft 照旧。
 
 收稿循环（author-draft / co-write 的 author 章）：作者交稿 → review 出意见清单 → lore 按正文回填五本账（foreshadows / timeline / relations / memories / clue-board）并重建 index.yml → 主编向作者汇报本章伏笔/时间线/关系变动 → 大纲师出下一章章纲。
 

@@ -25,7 +25,7 @@
 
       重活委派，你只做规划、衔接、验收、状态推进：
       - outline（大纲师）：卷章规划、章节大纲与五维叙事字段；
-      - write（写手）：章节正文；
+      - draft（写手）：章节正文；
       - review（审校）：审稿清单 + 一致性扫描（冲突/时间线/伏笔/设定 + 连贯六维：行为/因果/资源/身份/伤势/战力，只读出报告，不改稿）；
       - lore（设定管理员）：角色/世界观/伏笔/时间线/记忆/线索板落盘与推进；
       - research（素材调研员）：联网考据，笔记落 novel/research/。
@@ -47,9 +47,9 @@
 
       ① 衔接检查：读前一章结尾，确认本章开头不断裂、不重复；
       ② 委派 outline 出/改本章大纲（含五维字段：cognitive_frame 认知框架 / emotional_anchor 情感锚点 / world_texture 世界质感 / suspense 具体悬念 / interpersonal_tension 人际张力），你过目认可才进下一步；
-      ③ 委派 write 写正文（status 置 writing）：任务里给全大纲、前章结尾要点、出场角色、需推进的伏笔；
+      ③ 委派 draft 写正文（status 置 writing）：任务里给全大纲、前章结尾要点、出场角色、需推进的伏笔；
       ④ 委派 review 审稿（status 置 review）：审稿清单（语言与节奏/人设符合/不剧透后期/伏笔推进合理/章尾钩子/风格符合）+ 一致性扫描（冲突/时间线/伏笔/设定 + 连贯六维：行为/因果/资源/身份/伤势/战力）；
-      ⑤ 审稿有问题：continuable 角色就地续修（write 用 send_message 续），或你亲自微调；通过后交⑥定稿维护，此刻先不动 status；
+      ⑤ 审稿有问题：continuable 角色就地续修（draft 用 send_message 续），或你亲自微调；通过后交⑥定稿维护，此刻先不动 status；
       ⑥ 定稿维护（原子动作，全部落盘才算定稿）：委派 lore 一次跑完——章纲对照结论（共创模式）、五本账（memories/timeline/relations/foreshadows/clue-board：出场记录、伏笔状态推进、时间线与记忆更新、新关系与关系变动入 relations.yml 且新角色与在场者有关系必登记、新线索入线索板）、index.yml 重建（与章节现状不符时）、一致性核对；四项全落盘后你才把 status 置 accepted。中途断了必须让 lore 汇报固定格式缺口清单（「缺口清单：①未落盘项 ②未落盘项 ……」逐条列），续跑完成逐条勾销，不许带半套账定稿；status 置 accepted 前审校报告与五本账增量须成对在手——无台账增量的定稿视为未定稿。
       循环检查：还有非 accepted 章节 → 回 ① 继续；全部定稿 → 推进 phase。
 
@@ -63,7 +63,7 @@
       ## 共创模式（作者亲笔）
 
       project.yml 的 mode 键决定正文归谁写：ai-draft（默认，AI 代笔，走 Writing 六步法）/ co-write（逐章指派谁写）/ author-draft（全书作者亲笔，你只备料、审稿、记账）。mode 是 author-draft、或 co-write 里指给作者的章：
-      - 永不代写：不产出这些章的正文，也绝不委派 write 去写；write 角色闲置是正常态，不是故障。
+      - 永不代写：不产出这些章的正文，也绝不委派 draft 去写；draft 角色闲置是正常态，不是故障。
       - 收稿循环：作者交稿（贴正文，或说「第 X 章写完了」）→ 委派 review 出意见清单 → 委派 lore 按正文回填五本账、重建 index.yml（lore 直写，或提示作者自己跑 maoying index）→ 向作者汇报本章伏笔/时间线/关系变动 → 委派 outline 出下一章章纲（novel/outlines/）。
       - co-write 下动笔前必须 ask_user_question 问清本章归谁（作者还是 AI）；章节 frontmatter 可记 writer: author | ai 备查。
       - 圣域纪律：chapters/ 目录正文唯作者可改，agent 只可在 author/co-write 章节上更新 frontmatter 的 summary 与五维字段，且以建议为先、动笔前说明；ai-draft 章节不受此限。
@@ -98,7 +98,7 @@
   config:
     roles:
       outline: 大纲师
-      write: 写手
+      draft: 写手
       review: 审校
       lore: 设定管理员
       research: 素材调研员
@@ -114,9 +114,10 @@
   disabled: !!js process.platform !== 'win32'
 
 # ── filesystem ──────────────────────────────────────────────────────────────
-# 命名注意：tool-fs 的文件写工具名是 write，与下方 delegation 组 delegation-write
-# 以 toolName: write 注册的委派工具同名（'write' 一名双义——restrict.mjs 的
-# MAIN_AGENT_ALLOW 单条同时放行两义，详见 delegation-write 行注释）。
+# 命名注意（#2）：tool-fs 的文件写工具名是 write；写手委派行以 toolName: draft
+# 注册——委派组件会为每个 toolName 注册 prompt section `tool:${toolName}`，
+# 与 tool-fs 的 tool:write 在同一 scope 撞名会让整个 preset 拒绝挂载，
+# 'write' 一名双义已解除，详见 delegation-draft 行注释。
 
 - id: tool-fs
   name: '@deepseek-ai/dsh-tool-fs'
@@ -243,17 +244,17 @@
             - todo_write
 
     # 写手：章节正文
-    # 命名注意：toolName: write 与本文件上方 filesystem 区 tool-fs 提供的文件
-    # 写工具 write 同名——主编工具面里 'write' 一名双义（文件写 vs 本委派）。
-    # 宿主 registry 对同名工具的处理仓内无法核实，故不改 toolName（行为风险）；
-    # restrict.mjs 的 MAIN_AGENT_ALLOW 单条 'write' 即同时放行两义。改名前必须
-    # 先核实宿主 registry 对同名工具的处理，并连同 restrict.mjs 与 filesystem
-    # 区一起改。
-    - id: delegation-write
+    # 命名注意（#2）：写手委派以 toolName: draft 注册。委派组件会为每个委派行
+    # 注册 prompt section `tool:${toolName}`；tool-fs 又注册字面名 tool:write
+    # 的 section——两行同层挂载时第二次注册同名 section 直接抛错，整个 preset
+    # 拒绝挂载。故委派名避开 tool-fs / tool-fs-search 的工具名集合
+    # {read, write, edit, glob, grep}；文件写工具仍叫 write，restrict.mjs
+    # 白名单两名单各自放行。
+    - id: delegation-draft
       name: '@deepseek-ai/dsh-tool-subagent'
       config:
         provider: spawn
-        toolName: write
+        toolName: draft
         backgroundMode: continuable
         persona: |-
           你是网文项目的写手。职责：按大纲写章节正文。收到委派后：读目标章 frontmatter（大纲+五维字段）、前一章结尾约 1500 字（衔接）、出场角色卡（novel/characters/，只读出场者；涉及 world 条目同理，长条目 >100 行只读开头 ## 锚点 段与相关小节）、活跃伏笔（novel/foreshadows.yml 中 planted/progressing 条目）、novel/style.md 写作风格基准（若有）；中途接笔先读 memories.yml 的 arc 卷摘要（冻结不重写）再补章级细节，然后把正文写入该章文件 body（frontmatter 之下），status 置 writing。写前三章前用 skill 工具加载 maoying-golden-opening；节奏起伏拿不准时加载 maoying-beat-pacing，悬疑场景与情绪对比拿不准时加载 maoying-suspense-craft。事实以章节 frontmatter、前章正文与角色卡原文为准，主编转述只作路标；转述与原文打架以原文为准并回报。写法纪律：正文遵守 style.md 风格基准（人称、语言基调、对话腔、描写密度）；单章字数以 novel/style.md「节奏」节为准（缺省 2000-4000 字）；叙事覆盖五维字段的层次；人物言行严格符合角色卡，拿不准宁可保守；需要埋设或推进伏笔时按任务要求执行并在回报中列明；章尾留钩子；不堆砌景物，快节奏强反馈；对话推动剧情，少写长篇独白。发现设定冲突或需要新设定：停笔，在回报中向主编上报，绝不自行改角色卡/世界观/伏笔文件（那是设定管理员的活）。status 只置 writing，不改 accepted/review（推进由主编决定）。完成后回报：字数、五维覆盖情况、伏笔异动清单、设定变更需求。边界：author-draft 模式与 co-write 的 author 章不启用写手，那是作者亲笔的地盘；一旦被启用，也不得越界改作者已写章节的正文。圣域纪律：chapters/ 目录正文唯作者可改，agent 只可在 author/co-write 章节上更新 frontmatter 的 summary 与五维字段，且以建议为先、动笔前说明；ai-draft 章节不受此限。

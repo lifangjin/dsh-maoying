@@ -52,8 +52,11 @@ const v2Rows = yaml ? parsePresetRows(yaml, readFileSync(path.join(PLUGIN_ROOT, 
 /** v2 原文（!!js grep 断言与无 yaml 包时的字符串级降级比对用）。 */
 const v2Text = readFileSync(path.join(PLUGIN_ROOT, 'presets/maoying/agent.cordis.v2.yml'), 'utf8')
 
-const ROLES = ['outline', 'write', 'review', 'lore', 'research']
-const ROLE_CN = { outline: '大纲师', write: '写手', review: '审校', lore: '设定管理员', research: '素材调研员' }
+const ROLES = ['outline', 'draft', 'review', 'lore', 'research']
+const ROLE_CN = { outline: '大纲师', draft: '写手', review: '审校', lore: '设定管理员', research: '素材调研员' }
+/** toolName → 角色 preset id。#2 起写手委派以 draft 注册（避开 tool-fs 的 tool:write
+ *  prompt section 撞名），preset id 沿用历史名 maoying-write——两者不再同名派生。 */
+const PRESET_ID = { outline: 'maoying-outline', draft: 'maoying-write', review: 'maoying-review', lore: 'maoying-lore', research: 'maoying-research' }
 
 /** v1 delegation 组里的 5 条角色委派行，按 toolName 索引。 */
 function v1DelegationRows() {
@@ -131,7 +134,7 @@ test('主编 preset 元数据与 v1 preset.yml 同源；5 张角色 preset 命�
   assert.equal(main.description, meta.description)
   assert.equal(main.order, meta.order)
   for (const role of ROLES) {
-    const cfg = v2Preset(`maoying-${role}`).config
+    const cfg = v2Preset(PRESET_ID[role]).config
     assert.equal(cfg.name, `毛颖·${ROLE_CN[role]}（内部）`)
     assert.ok(cfg.description.includes('由主编委派自动选用'), `${role} description 应注明自动选用`)
     assert.ok(cfg.description.includes('单独开会话'), `${role} description 应注明可单独开会话`)
@@ -181,7 +184,7 @@ test('主编 preset 5 条委派行：无 persona/toolFilter，agentPreset 与角
     assert.ok(!('toolFilter' in row.config), `delegation-${role} 不得再带 toolFilter 键`)
     assert.equal(row.config.provider, v1Map[role].config.provider)
     assert.equal(row.config.backgroundMode, v1Map[role].config.backgroundMode)
-    assert.equal(row.config.agentPreset, `maoying-${role}`)
+    assert.equal(row.config.agentPreset, PRESET_ID[role])
     assert.ok(v2Rows.some((r) => r.config.id === row.config.agentPreset), `agentPreset ${row.config.agentPreset} 必须已在本补丁树声明`)
   }
   // 子代理管理两行原样保留
@@ -221,7 +224,7 @@ const CAPABILITY_OF_ROW = {
 /** v1 五角色的 toolFilter.allow 权威底册（design.md §4 表；防 v1 侧漂移）。 */
 const EXPECTED_V1_ALLOW = {
   outline: ['read', 'read_image', 'glob', 'grep', 'write', 'edit', 'bash', 'skill', 'ask_user_question', 'todo_write'],
-  write: ['read', 'read_image', 'glob', 'grep', 'write', 'edit', 'bash', 'skill', 'ask_user_question', 'todo_write'],
+  draft: ['read', 'read_image', 'glob', 'grep', 'write', 'edit', 'bash', 'skill', 'ask_user_question', 'todo_write'],
   review: ['read', 'read_image', 'glob', 'grep', 'skill', 'todo_write', 'ask_user_question'],
   lore: ['read', 'glob', 'grep', 'write', 'edit', 'bash', 'skill', 'ask_user_question', 'todo_write'],
   research: ['web_search', 'web_fetch', 'glob', 'grep', 'read', 'write', 'bash', 'ask_user_question', 'todo_write'],
@@ -237,9 +240,9 @@ for (const role of ROLES) {
   test(`[${role}] v1 persona 逐字节 === v2 角色 preset persona`, (t) => {
     if (!yaml) return t.skip('本机没有可用的 yaml 包（/tmp/yamlcheck）')
     const v1Persona = v1DelegationRows()[role].config.persona
-    const rolePlugins = v2Preset(`maoying-${role}`).config.plugins
+    const rolePlugins = v2Preset(PRESET_ID[role]).config.plugins
     const personaRow = rolePlugins.find((r) => r.id === 'persona')
-    assert.ok(personaRow, `maoying-${role} 缺 persona 行`)
+    assert.ok(personaRow, `${PRESET_ID[role]} 缺 persona 行`)
     assert.equal(personaRow.name, '@deepseek-ai/dsh-persona')
     // v1 侧防漂移：allow 底册比对（意外漂移即失败）
     assert.deepEqual(v1DelegationRows()[role].config.toolFilter.allow, EXPECTED_V1_ALLOW[role])
@@ -248,12 +251,12 @@ for (const role of ROLES) {
 
   test(`[${role}] v1 toolFilter.allow ⊆ v2 工具行能力覆盖（固定映射表换算）`, (t) => {
     if (!yaml) return t.skip('本机没有可用的 yaml 包（/tmp/yamlcheck）')
-    const rolePlugins = v2Preset(`maoying-${role}`).config.plugins
+    const rolePlugins = v2Preset(PRESET_ID[role]).config.plugins
     const coverage = new Set()
     for (const row of rolePlugins) {
       const capability = CAPABILITY_OF_ROW[row.id]
       if (capability === undefined && !['persona', 'agent-instructions', 'compaction'].includes(row.id)) {
-        assert.fail(`maoying-${role} 出现映射表未收录的工具行「${row.id}」——请补 CAPABILITY_OF_ROW`)
+        assert.fail(`${PRESET_ID[role]} 出现映射表未收录的工具行「${row.id}」——请补 CAPABILITY_OF_ROW`)
       }
       if (capability) for (const name of capability(row)) coverage.add(name)
     }
@@ -266,7 +269,7 @@ for (const role of ROLES) {
     }
     for (const name of v1DelegationRows()[role].config.toolFilter.allow) {
       if (narrowed.includes(name)) continue
-      assert.ok(coverage.has(name), `v1 allow 的「${name}」在 v2 maoying-${role} 无对应工具行覆盖`)
+      assert.ok(coverage.has(name), `v1 allow 的「${name}」在 v2 ${PRESET_ID[role]} 无对应工具行覆盖`)
     }
   })
 }
@@ -296,9 +299,9 @@ test('novel/style.md 模板在库且主编/outline/write/review 四段 persona�
   const v2Chief = v2Preset('maoying').config.plugins.find((r) => r.id === 'persona').config.prefix
   assert.ok(v1Chief.includes('style.md'), 'v1 主编 persona 应含 style.md（开工纪律防漂移）')
   assert.ok(v2Chief.includes('style.md'), 'v2 主编 persona 应含 style.md（开工纪律防漂移）')
-  for (const role of ['outline', 'write', 'review']) {
+  for (const role of ['outline', 'draft', 'review']) {
     const v1Persona = v1DelegationRows()[role].config.persona
-    const v2Persona = v2Preset(`maoying-${role}`).config.plugins.find((r) => r.id === 'persona').config.prefix
+    const v2Persona = v2Preset(PRESET_ID[role]).config.plugins.find((r) => r.id === 'persona').config.prefix
     assert.ok(v1Persona.includes('style.md'), `[${role}] v1 persona 应含 style.md`)
     assert.ok(v2Persona.includes('style.md'), `[${role}] v2 persona 应含 style.md`)
   }

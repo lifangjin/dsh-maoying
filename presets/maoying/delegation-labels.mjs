@@ -2,7 +2,7 @@
  * 委派子代理标签带角色名（delegation-labels.mjs）
  *
  * dsh-maoying 毛颖创作 preset 组件。主 agent 委派角色（outline /
- * write / review / lore / research）时，委派工具调用的 description 参数会成为
+ * draft / review / lore / research）时，委派工具调用的 description 参数会成为
  * 子会话的持久 label——任务管理页、会话头子代理目录树、后台任务列表展示的
  * 都是它。主编随手写的 description 只是一句任务短语，分不清哪条子代理是谁
  * 在干活；本插件在 tools/pre-execute 瀑布上把命中角色的委派调用改写成
