@@ -153,10 +153,13 @@ test('宿主 0.2.1-rc.2 / 0.2.1 / 0.3.0 → v2：托管块 6 行 preset，委派
       const ids = doc[0].insert.map((r) => r.config.id)
       assert.deepEqual(ids, ['maoying', 'maoying-outline', 'maoying-write', 'maoying-review', 'maoying-lore', 'maoying-research'])
       const delegation = doc[0].insert[0].config.plugins.find((r) => r.id === 'delegation')
-      for (const role of ['outline', 'write', 'review', 'lore', 'research']) {
+      // #2：写手委派以 toolName: draft 注册（避开 tool-fs 的 tool:write section 撞名），
+      // preset id 沿用历史名 maoying-write，两者不再同名派生。
+      const presetIdOf = { outline: 'maoying-outline', draft: 'maoying-write', review: 'maoying-review', lore: 'maoying-lore', research: 'maoying-research' }
+      for (const role of ['outline', 'draft', 'review', 'lore', 'research']) {
         const row = delegation.config.find((c) => c.config?.toolName === role)
         assert.ok(row, `${version} 缺 delegation-${role}`)
-        assert.equal(row.config.agentPreset, `maoying-${role}`)
+        assert.equal(row.config.agentPreset, presetIdOf[role])
         assert.equal('persona' in row.config, false)
         assert.equal('toolFilter' in row.config, false)
       }

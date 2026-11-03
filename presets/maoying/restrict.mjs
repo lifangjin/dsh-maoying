@@ -8,7 +8,7 @@
  * 错误地砍掉角色工具面。
  *
  * 主编保留：
- *   - 角色委派：outline / write / review / lore / research
+ *   - 角色委派：outline / draft / review / lore / research
  *   - 子代理管理：send_message / list_agents / interrupt_agent
  *   - 内部检索（热路径，不绕委派）：glob / grep / read / read_image / bash
  *   - 协调：todo_write / ask_user_question / goal_* / job_* / exit_plan_mode
@@ -18,10 +18,10 @@
  * 以及未列出的一切通用委派与工作流工具。
  *
  * write / edit 保留在白名单（见 MAIN_AGENT_ALLOW）：主编需要亲自做小修
- * 小补（改 phase、补 frontmatter、微调摘要），这些活不值得委派一次。注意
- * 'write' 一名双义——既是 tool-fs 的文件写工具，也是 delegation-write 以
- * toolName: write 注册的委派工具（宿主 registry 对同名工具的处理仓内无法
- * 核实，改名前必须先核实；详见 MAIN_AGENT_ALLOW 内注释）。
+ * 小补（改 phase、补 frontmatter、微调摘要），这些活不值得委派一次。写手
+ * 委派以 toolName: draft 注册（#2：委派行会注册 prompt section
+ * `tool:${toolName}`，与 tool-fs 的 tool:write 同 scope 撞名会让整个 preset
+ * 挂载失败），'write' 在白名单里只指文件写工具，一名双义已解除。
  *
  * Host 工具（mcp__*、插件工具）一律不硬编码——是否挂载是检测期事实，
  * 硬编码会让未装对应插件的宿主直接出错。本文件只留 dsh 核心工具。
@@ -39,12 +39,11 @@ export const inject = ['systemPrompt', 'tools']
 const MAIN_AGENT_ALLOW = new Set([
   // ── 角色委派 ─────────────────────────────────────────────────────
   'outline',
-  // 命名注意：'write' 一名双义——delegation-write 以 toolName: write 注册的
-  // 委派工具，与 tool-fs 提供的文件写工具（agent.cordis*.yml 的 filesystem 区）
-  // 同名。白名单按工具名匹配，这里单条 'write' 即同时放行两义。宿主 registry
-  // 对同名工具的处理仓内无法核实，故不改名；改名前必须先核实 registry 行为，
-  // 并连同两份 agent.cordis*.yml 的 toolName/filesystem 一起改。
-  'write',
+  // 命名注意（#2）：写手委派以 toolName: draft 注册——委派组件为每个委派行
+  // 注册 prompt section `tool:${toolName}`，与 tool-fs 的字面名 tool:write
+  // 在同一 scope 撞名会让整个 preset 挂载失败。委派名须避开 tool-fs /
+  // tool-fs-search 的工具名集合 {read, write, edit, glob, grep}。
+  'draft',
   'review',
   'lore',
   'research',
@@ -69,9 +68,9 @@ const MAIN_AGENT_ALLOW = new Set([
   'job_list',
   'job_kill',
   // ── 主编亲笔（小修小补不过委派） ────────────────────────────────
-  // 这里只列 'edit'：'write'（文件写语义正属此区）已由上方「角色委派」区的
-  // 同名条目放行——同一个 Set 里写两遍会被静默去重，反而掩盖「'write' 一名
-  // 双义（文件写 vs 委派工具）」这一事实，故显式只写一处并加注释。
+  // 'write' 是 tool-fs 的文件写工具（写手委派已改名 draft 注册，'write'
+  // 一名双义解除，此区按文件写本义放行）。
+  'write',
   'edit',
 ])
 

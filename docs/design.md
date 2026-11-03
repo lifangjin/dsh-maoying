@@ -118,16 +118,16 @@ novel/
 | toolName | 角色 | 干什么 | backgroundMode | 工具面（toolFilter.allow） |
 |---|---|---|---|---|
 | outline | 大纲师 | 卷章规划、章节大纲+五维字段 | continuable | read read_image glob grep write edit bash skill ask_user_question todo_write |
-| write | 写手 | 章节正文（按大纲写、衔接前章、回报设定变更） | continuable | read read_image glob grep write edit bash skill ask_user_question todo_write |
+| draft | 写手 | 章节正文（按大纲写、衔接前章、回报设定变更） | continuable | read read_image glob grep write edit bash skill ask_user_question todo_write |
 | review | 审校 | 审稿清单 + 一致性扫描（冲突/时间线/伏笔/设定 + 连贯六维，只读、出报告不改稿） | one-shot | read read_image glob grep skill todo_write ask_user_question |
 | lore | 设定管理员 | 章节/角色/世界观/伏笔/时间线/记忆/线索板维护，出场记录与伏笔状态推进 | continuable | read glob grep write edit bash skill ask_user_question todo_write |
 | research | 素材调研员 | 联网考据（历史/地理/专业领域），笔记落 novel/research/ | one-shot | web_search web_fetch glob grep read write bash ask_user_question todo_write |
 
-主编工具面（restrict.mjs 白名单）：outline write review lore research + send_message list_agents interrupt_agent + glob grep read read_image bash + todo_write ask_user_question get_goal create_goal update_goal exit_plan_mode job_output job_list job_kill + edit（主编亲笔小修小补不过委派）。其中 'write' 一名双义——单条 'write' 同时放行 tool-fs 的文件写工具与 delegation-write 以 toolName: write 注册的委派工具（白名单按工具名匹配，宿主 registry 对同名工具的处理仓内无法核实，改名前必须先核实）。registry deny: ['skill']（堵 ~1.3k 技能目录注入）。
+主编工具面（restrict.mjs 白名单）：outline draft review lore research + send_message list_agents interrupt_agent + glob grep read read_image bash + todo_write ask_user_question get_goal create_goal update_goal exit_plan_mode job_output job_list job_kill + write edit（主编亲笔小修小补不过委派）。写手委派以 toolName: draft 注册（#2：委派行会注册 prompt section `tool:${toolName}`，与 tool-fs 的 tool:write 同 scope 撞名会让整个 preset 拒绝挂载；委派名避开 tool-fs / tool-fs-search 的工具名集合 {read, write, edit, glob, grep}），'write' 只指文件写工具，一名双义已解除。registry deny: ['skill']（堵 ~1.3k 技能目录注入）。
 
 注意：toolFilter.allow 一律不放 mcp__* 工具（子代理创建时 tools.restrict 校验名字必须在注册面，MCP 是否挂载是 host 事实，硬编码会让未装 tavily 的宿主直接建不出子代理）；skill 仅用于按 persona 加载 maoying-* 方法论技能（审校同样只读不改）。
 
-delegation-labels 静态角色名映射：{outline: 大纲师, write: 写手, review: 审校, lore: 设定管理员, research: 素材调研员}。
+delegation-labels 静态角色名映射：{outline: 大纲师, draft: 写手, review: 审校, lore: 设定管理员, research: 素材调研员}。
 
 ## 5. 主编人设（核心 IP，中文）
 
@@ -139,9 +139,9 @@ persona prefix 内容骨架（agent.cordis.yml 内联，中文书写）：
 4. **Writing 六步法**（逐章循环）：
    ① 衔接检查：读前章结尾，确认无断裂；
    ② 委派 outline 出/改本章大纲（含五维字段），主编过目；
-   ③ 委派 write 写正文（写手人设要求：按大纲覆盖五维、不写崩人设、章尾留钩子），status→writing；
+   ③ 委派 draft 写正文（写手人设要求：按大纲覆盖五维、不写崩人设、章尾留钩子），status→writing；
    ④ 委派 review 审稿（清单：语言/节奏/人设符合/不剧透/伏笔推进合理/前后矛盾/风格符合），status→review；
-   ⑤ 审稿问题回 write 修（continuable 就地续修）或主编微调；
+   ⑤ 审稿问题回 draft 修（continuable 就地续修）或主编微调；
    ⑥ 定稿维护（原子动作）：委派 lore 一次跑完章纲对照结论（共创模式）+ 五本账（memories/timeline/relations/foreshadows/clue-board）+ `maoying index` 重建概览 + 一致性核对，全部落盘后 status→accepted；中途断了汇报缺口清单再续。
    循环检查：还有非 accepted 章节 → 回 ①。
 5. **Collab 四步共创**（新书冷启动）：设定共创（最小设定集逐项对齐 + 世界观与核心角色卡落盘，设用户拍板点）→ 分卷规划（volumes.yml + 各卷 summary，设用户拍板点）→ 前三章交付（机械自检设定件齐备后走黄金三章：第一章立世界观钩子、第二章立主角动机、第三章立核心冲突）→ 交接循环写作（切 Writing 六步法）。
@@ -185,9 +185,9 @@ project.yml 加 `mode` 字段：`ai-draft`（默认，现状）/ `co-write`（�
 
 ### 9.2 主编共创流程（author-draft / co-write 的 author 章）
 
-- **永不代写**：主编不产出章节正文，不委派 write 写 author 章；
+- **永不代写**：主编不产出章节正文，不委派 draft 写 author 章；
 - 循环：大纲师出下一章章纲 → 作者自写 → 作者交稿（贴文或说「第 X 章写完了」）→ 主编收稿：review 意见清单 + lore 账本回填 + 重建 index.yml + 汇报本章伏笔/时间线变动 → 出再下一章章纲；
-- co-write 下主编动笔前必须问清本章归谁；author-draft 下 write 角色闲置是正常态。
+- co-write 下主编动笔前必须问清本章归谁；author-draft 下 draft 角色闲置是正常态。
 
 ### 9.3 章纲 outlines/
 
