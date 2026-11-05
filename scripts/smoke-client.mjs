@@ -5,6 +5,7 @@
  *   ① 语法可编译：整份源码 new Function 包裹，解析失败即红；
  *   ② ModuleLoader 拦截：stub window / document 求值，截获 load({ id, factory })，
  *      id 必须是 dsh-maoying（图行 id 约定，挂错名宿主首载即 import 报错）；
+ *      currentScript.src 按四形态跑（issue #5：0.2.2-rc.1 起 /??集合式 URL）——无 src 回退 / /?? 集合式 / 旧路径式 / 裸路径；
  *   ③ factory 求值：stub react（五个 hook + createElement + Component——
  *      class extends 在定义期就要 Component）与宿主 UI 原语；react-dom/client
  *      缺席由 factory 内部 catch（Node 下拿不到属正常）。导出面必须 =
@@ -35,26 +36,38 @@ try {
 }
 
 // ② 求值并截获 ModuleLoader.load（querySelector 给真值走 mountCss 幂等跳过支，
-//    Node 下不触碰任何真实 DOM）
+//    Node 下不触碰任何真实 DOM）。src 形态四例全跑（issue #5）：宿主代际不同
+//    的 client.js URL 形状都必须解析出同一图行 id——0.2.1-rc.5 及之前的单资源
+//    路径式、0.2.2-rc.1 起的 /??集合式（&rev= 拼尾）、无查询串的裸路径，以及
+//    currentScript 缺席回退主包名。
+const SRC_SHAPES = [
+  { label: '无 src（回退主包名）', src: null },
+  { label: '0.2.2-rc.1+ 集合式 /??', src: 'https://host.example/plugins/??dsh-maoying/client.js&rev=7de05c053dbf' },
+  { label: '0.2.1-rc.5- 路径式 ?rev=', src: 'https://host.example/plugins/dsh-maoying/client.js?rev=7de05c053dbf' },
+  { label: '裸路径无查询串', src: 'https://host.example/plugins/dsh-maoying/client.js' },
+]
 let definition = null
-const windowStub = {
-  __ModuleLoader__: {
-    load(def) {
-      definition = def
+for (const shape of SRC_SHAPES) {
+  definition = null
+  const windowStub = {
+    __ModuleLoader__: {
+      load(def) {
+        definition = def
+      },
     },
-  },
-}
-const documentStub = { currentScript: null, querySelector: () => ({}) }
-try {
-  compiled(windowStub, documentStub)
-} catch (err) {
-  fail(`lib/client.js 顶层求值失败：${err.message}`)
-}
-if (!definition || typeof definition.factory !== 'function') {
-  fail(`未截获 __ModuleLoader__.load({ factory })，实得：${JSON.stringify(definition)?.slice(0, 120)}`)
-}
-if (definition.id !== 'dsh-maoying') {
-  fail(`插件 id 应为 dsh-maoying（图行 id 约定），实得「${definition.id}」`)
+  }
+  const documentStub = { currentScript: shape.src === null ? null : { src: shape.src }, querySelector: () => ({}) }
+  try {
+    compiled(windowStub, documentStub)
+  } catch (err) {
+    fail(`lib/client.js 顶层求值失败（${shape.label}）：${err.message}`)
+  }
+  if (!definition || typeof definition.factory !== 'function') {
+    fail(`未截获 __ModuleLoader__.load({ factory })（${shape.label}），实得：${JSON.stringify(definition)?.slice(0, 120)}`)
+  }
+  if (definition.id !== 'dsh-maoying') {
+    fail(`插件 id 应为 dsh-maoying（图行 id 约定，${shape.label}），实得「${definition.id}」`)
+  }
 }
 
 // ③ factory 求值：导出面 + apply 双路

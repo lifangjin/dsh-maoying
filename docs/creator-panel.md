@@ -14,7 +14,7 @@
   - 新增 `dsh.client`: `{ platform: "web", inject: ["@deepseek-ai/dsh-client-ui-settings", "@deepseek-ai/dsh-client-connection"] }`；
   - `files` 补 `lib/`（已含）。
 - cordis.patch.yml 不变（bundle insert 已挂主包）。
-- 浏览器 bundle：`window.__ModuleLoader__.load({ id, factory })`，**id 从 currentScript.src 动态解析**（`/\/plugins\/([^/]+)\/client\.js/` 首段），解析不到回退 `'dsh-maoying'`——宿主合并 bundle 下 currentScript 是唯一可靠线索（踩坑教训：宿主合并 bundle 下 id 不可写死）。
+- 浏览器 bundle：`window.__ModuleLoader__.load({ id, factory })`，**id 从 currentScript.src 动态解析**（`/\/plugins\/(\?\?)?([^/?&#]+)\/client\.js/` 第 2 段），解析不到回退 `'dsh-maoying'`——宿主合并 bundle 下 currentScript 是唯一可靠线索（踩坑教训：宿主合并 bundle 下 id 不可写死）。URL 两代形状通吃：0.2.1-rc.5 及之前 `/plugins/<名>/client.js?rev=…` 单资源路径式；0.2.2-rc.1 起 `/plugins/??<名>/client.js&rev=…` 集合式（宿主 ClientModuleSystem 以 `/??` 作集合分隔，一个 URL 服务同包多资源；issue #5——旧正则 `[^/]+` 会把 `??` 捕进包名，id 变 `??dsh-maoying`，首载后置校验 factories.has 失败）。
 - factory 内 `require('react')` + `require('@deepseek-ai/dsh-client-ui-primitives')`；图标做跨版本兜底可简化：只用 Regular 系（0.1.7+ 命名），旧宿主（≤0.1.6）不承诺。
 - CSS：`lib/base.css` 独立文件，Node 侧 `GET /api/maoying/client.css` 现读下发（no-cache），客户端首次物化幂等注入 `<link data-plugin-css="maoying-creator/base">`——改样式无需重启，GUI 刷新即生效。设计令牌用 `--dsw-alias-*`，深色主题随 `body[data-ds-dark-theme]` 自动跟随。
 
