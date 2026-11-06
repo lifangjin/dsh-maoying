@@ -155,8 +155,9 @@ persona prefix 内容骨架（agent.cordis.yml 内联，中文书写）：
 
 - 支持：DSH 0.1.7 – 0.2.1-rc.1（patch 声明行 + 内联委派行形状）。
 - 0.2.1-rc.2+：dsh-tool-subagent 拒内联 persona/toolFilter——**已适配**：安装器按宿主版本自动切换 v1 内联 / v2 AgentPreset 形状，见 §8 与 README「兼容面」。
+- 0.2.2-alpha.2+：`@deepseek-ai/dsh-tool-subagent-control` 删除 `./list-agents` 子路径导出，list_agents 并入主导出——**已适配（issue #7）**：v2 组装时按宿主版本剥离主编 preset 的 tool-subagent-list-agents 行（hostMergedSubagentListAgents ≥ 0.2.2-alpha.2）；旧行在 0.2.2+ 模块解析失败，注册表审计把整张主编 preset 判 broken、从选择器消失（0.2.2-rc.1 真机复现：startup 日志 `agent preset maoying: tool-subagent-list-agents …: never started`，剥离后 warn 消失、主预设恢复挂载）。
 - ≤0.1.6 目录扫描轨道：不做（已淘汰）。
-- 当前开发宿主：0.2.0-rc.2（内联形状 OK）。
+- 当前开发宿主：0.2.0-rc.2（内联形状 OK）；issue #7 复现环境：npm 暂装 @deepseek-ai/dsh@0.2.2-rc.1 + dsh-base/dsh-web-app/dsh-headless@0.2.2-rc.1 假 home（DSH_HOME 指向）真机启动验证。
 
 ## 7. CLI（bin/maoying.mjs，零依赖 node:fs）
 
@@ -173,6 +174,7 @@ persona prefix 内容骨架（agent.cordis.yml 内联，中文书写）：
 - ✅ **技能包（黄金三章/爽点节奏/审校清单/伏笔管理）**——已做：skills/ 四目录随包分发，安装器复制到 `<home>/skills/maoying-*`（逐字节比较幂等 + .installed-version 标记，见 index.mjs installSkills）。
 - ✅ **导出（MD/TXT/EPUB）**——已做：`maoying export [dir] --format md|txt|epub [--out <目录>]`；EPUB 由 lib/epub.mjs 零依赖打包（手写 stored zip + CRC32 表格法，EPUB 3 最小合法结构）。
 - ✅ **0.2.1-rc.2+ AgentPreset 形态适配**——已做：presets/maoying/agent.cordis.v2.yml（主编 + 5 角色 preset 的 v2 组合源）+ index.mjs composeManagedRows 按宿主版本双形态切换（v1 内联 / v2 AgentPreset，宿主升降级重启即整块换形状；防漂移由 test/composition.test.mjs 逐字节断言，见 README「兼容面」）。
+- ✅ **0.2.2+ list-agents 行剥离（issue #7）**——已做：index.mjs hostMergedSubagentListAgents 版本门（≥ 0.2.2-alpha.2）+ composeManagedRows 组装时 stripMergedSubagentListAgents 剥行；v2 组合源保持 ≤ 0.2.1 形状不动（双源逐字节防漂移），剥离只发生在组装产物；安装日志注明剥离。
 - ✅ **Web 创作台面板**——已做：/api/maoying/* 二十三条路由 + 左侧栏入口 + 会话中栏全页面板，九视图（概览（含书稿元信息编辑）/章节/角色/伏笔看板/关系图/时间线/设定/写作风格/索引板）；设计与契约见 docs/creator-panel.md。
 
 ## 9. 五期：共创模式（作者亲笔稿）

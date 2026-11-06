@@ -17,6 +17,13 @@
 # 5 张角色 preset 会出现在宿主预设选择器（无隐藏机制），name 带「（内部）」标明：
 # 由主编委派自动选用，直接选中亦可单独开会话。
 #
+# 版本适配（issue #7）：主编 preset 委派组里的 tool-subagent-list-agents 行按
+# ≤ 0.2.1-rc.x 形状书写（list_agents 是独立子路径导出）；0.2.2-alpha.2 起宿主把
+# list_agents 并进 @deepseek-ai/dsh-tool-subagent-control 主导出并删除该子路径，
+# 本源文件保持不动（双源逐字节防漂移），由 index.mjs composeManagedRows 在组装时
+# 按宿主版本剥离该行（hostMergedSubagentListAgents ≥ 0.2.2-alpha.2）——旧行在
+# 0.2.2+ 上模块解析失败，注册表审计会把整张主编 preset 判 broken、从选择器消失。
+#
 # `!!js` 仅有 process.platform 两种表达式（tool-bash / tool-pwsh 的 disabled），
 # 与 v1 相同，由 index.mjs preprocessPatchText 中和；新增其他表达式必须同步扩充该函数。
 - insert:

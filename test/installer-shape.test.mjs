@@ -4,7 +4,9 @@
  *   · 版本矩阵：0.2.0-rc.2 / 0.2.1-rc.1 → v1（1 行、内联 persona、无
  *     agentPreset）；版本完全未知（五级探针全败）→ partial 不写块（防把可能
  *     已升级 ≥0.2.1-rc.2 的宿主声明成 v1 内联、五路委派全废）；0.2.1-rc.2 /
- *     0.2.1 / 0.3.0 → v2（6 行 preset、委派行带 agentPreset、无 persona/toolFilter）；
+ *     0.2.1 → v2（6 行 preset、委派行带 agentPreset、无 persona/toolFilter）；
+ *     0.2.2-rc.1 → v2 且剥离 tool-subagent-list-agents 行（0.2.2 并入 control
+ *     主导出，issue #7：残留即整张主编 preset broken、从选择器消失）；
  *   · 同一 home 先 v1 后改宿主版本重跑 → 托管块整块替换为 v2，反向降级亦然；
  *     块外用户内容（块前 + 块后）在两次切换中逐字节保留；同版本二跑 skipped；
  *   · 两种形态的托管块产物都过 YAML 解析（借 /tmp/yamlcheck 的 yaml 包，与现有
@@ -28,7 +30,7 @@ import { fileURLToPath } from 'node:url'
 
 const PLUGIN_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 
-const { MANAGED_BEGIN, MANAGED_END, composeManagedRows, ensurePresetInstalled, hostRejectsInlineDelegation, readHostVersion, stringifyManagedBlock, sweepStaleManagedBlockTmp } =
+const { MANAGED_BEGIN, MANAGED_END, composeManagedRows, ensurePresetInstalled, hostMergedSubagentListAgents, hostRejectsInlineDelegation, readHostVersion, stringifyManagedBlock, sweepStaleManagedBlockTmp } =
   await import('../index.mjs')
 
 // ── 假 home 与假宿主版本 ─────────────────────────────────────────────────────
@@ -135,9 +137,9 @@ test('宿主 0.2.0-rc.2 → v1：托管块 1 行，委派行内联 persona + too
   })
 })
 
-test('宿主 0.2.1-rc.2 / 0.2.1 / 0.3.0 → v2：托管块 6 行 preset，委派行带 agentPreset 且无 persona/toolFilter', (t) => {
+test('宿主 0.2.1-rc.2 / 0.2.1 → v2：托管块 6 行 preset，委派行带 agentPreset 且无 persona/toolFilter，list-agents 行保留', (t) => {
   skipWithoutYamlStaging(t)
-  for (const version of ['0.2.1-rc.2', '0.2.1', '0.3.0']) {
+  for (const version of ['0.2.1-rc.2', '0.2.1']) {
     const home = makeFakeHome({ hostVersion: version })
     withHome(home, () => {
       const { lines, logger } = makeLogger()
@@ -163,8 +165,54 @@ test('宿主 0.2.1-rc.2 / 0.2.1 / 0.3.0 → v2：托管块 6 行 preset，委派
         assert.equal('persona' in row.config, false)
         assert.equal('toolFilter' in row.config, false)
       }
+      // ≤ 0.2.1-rc.x：list_agents 是独立子路径导出，声明行必须保留
+      const control = delegation.config.find((c) => c.name === '@deepseek-ai/dsh-tool-subagent-control')
+      const listAgents = delegation.config.find((c) => c.name === '@deepseek-ai/dsh-tool-subagent-control/list-agents')
+      assert.ok(control, `${version} 缺 tool-subagent-control 行`)
+      assert.ok(listAgents, `${version} 缺 tool-subagent-list-agents 行（旧宿主上独立模块）`)
     })
   }
+})
+
+test('宿主 0.2.2-rc.1 → v2：list-agents 行被剥离（0.2.2 并入 control 主导出），其余原样', (t) => {
+  skipWithoutYamlStaging(t)
+  const home = makeFakeHome({ hostVersion: '0.2.2-rc.1' })
+  withHome(home, () => {
+    const { lines, logger } = makeLogger()
+    const result = ensurePresetInstalled({ logger })
+    assert.equal(result.status, 'ok')
+    assert.equal(result.shape, 'v2')
+    assert.equal(lines.warn.length, 0, `ok 路径不应有 warn：${lines.warn}`)
+    assert.ok(
+      lines.info.some((l) => l.includes('v2') && l.includes('list-agents')),
+      '安装日志应注明 list-agents 行剥离（issue #7）',
+    )
+
+    const { doc } = readManagedBlock(home, yamlOf(home))
+    assert.equal(doc.length, 1)
+    assert.equal(doc[0].insert.length, 6, 'preset 声明行仍 6 条（剥离只动主编 preset 的 plugins）')
+    const delegation = doc[0].insert[0].config.plugins.find((r) => r.id === 'delegation')
+    const names = delegation.config.map((c) => c.name)
+    assert.ok(names.includes('@deepseek-ai/dsh-tool-subagent-control'), 'control 行保留（0.2.2 起自带 list_agents 注册）')
+    assert.equal(names.includes('@deepseek-ai/dsh-tool-subagent-control/list-agents'), false, 'list-agents 行必须剥离（模块已删，残留即整张 preset broken）')
+    assert.equal(delegation.config.length, 6, '剥离后委派组 6 行：control + 5 委派')
+    // 五路委派不受影响
+    for (const role of ['outline', 'draft', 'review', 'lore', 'research']) {
+      assert.ok(delegation.config.find((c) => c.config?.toolName === role), `delegation-${role} 应保留`)
+    }
+  })
+})
+
+test('hostMergedSubagentListAgents 边界：0.2.2-alpha.2 起为真，alpha.1 与 0.2.1.x 为假，未知版本为假', () => {
+  assert.equal(hostMergedSubagentListAgents('0.2.1-rc.5'), false)
+  assert.equal(hostMergedSubagentListAgents('0.2.2-alpha.1'), false)
+  assert.equal(hostMergedSubagentListAgents('0.2.2-alpha.2'), true)
+  assert.equal(hostMergedSubagentListAgents('0.2.2-alpha.3'), true)
+  assert.equal(hostMergedSubagentListAgents('0.2.2-rc.1'), true)
+  assert.equal(hostMergedSubagentListAgents('0.2.2'), true)
+  assert.equal(hostMergedSubagentListAgents('0.3.0'), true)
+  assert.equal(hostMergedSubagentListAgents('版本未知'), false, '解析失败保守侧：不剥（旧行在旧宿主必需）')
+  assert.equal(hostMergedSubagentListAgents(null), false)
 })
 
 test('宿主 0.2.1-rc.1（确知旧版）→ v1 内联照写', (t) => {

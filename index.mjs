@@ -41,7 +41,9 @@
  *   v1 内联形状（agent.cordis.yml，1 条声明行，委派行内联 persona/toolFilter）；
  *   ≥ 0.2.1-rc.2 用 v2 AgentPreset 形状（agent.cordis.v2.yml，6 条声明行——
  *   主编 preset + 5 张角色 preset，委派行以 agentPreset 指向角色 preset，该版
- *   本起 dsh-tool-subagent 拒绝内联形状）。宿主升降级后重启即整块切换，无需
+ *   本起 dsh-tool-subagent 拒绝内联形状）；≥ 0.2.2-alpha.2 额外剥离主编 preset
+ *   的 tool-subagent-list-agents 行（0.2.2 把 list_agents 并进 control 主导出，
+ *   旧行会拖垮整张主编 preset，issue #7）。宿主升降级后重启即整块切换，无需
  *   重装插件（见 composeManagedRows）。版本完全未知（五级探针全败）时不写
  *   声明行、走 partial 自愈——绝不把可能已 ≥ 0.2.1-rc.2 的宿主声明成 v1 内联。
  *
@@ -128,6 +130,18 @@ export const MANAGED_END = '# --- end dsh-maoying preset managed ---'
 
 /** 声明行挂载的宿主 preset 包名（0.1.7+ 的 agent-preset-registry 组件包）。 */
 const PRESET_ROW_NAME = '@deepseek-ai/dsh-agent-preset'
+
+/**
+ * subagent 会话内清点工具（list_agents）的两代挂载形状：
+ *   - ≤ 0.2.1-rc.x：独立模块 @deepseek-ai/dsh-tool-subagent-control/list-agents
+ *     （子路径导出），委派组里要单独声明一行；
+ *   - ≥ 0.2.2-alpha.2：该子路径导出被移除，list_agents 的注册并入
+ *     @deepseek-ai/dsh-tool-subagent-control 主导出（apply 末尾自动注册）——
+ *     再声明那一行会因模块解析失败整行 never started，注册表审计把整张
+ *     主编 preset 判 broken、从选择器消失（issue #7，0.2.2-rc.1 实测复现）。
+ * v2 组合源按 ≤ 0.2.1 的形状写（唯一样式来源），组装时按宿主版本剥离旧行。
+ */
+const SUBAGENT_LIST_AGENTS_ROW_NAME = '@deepseek-ai/dsh-tool-subagent-control/list-agents'
 
 /** 需要落盘的预设源文件（与 presets/maoying/ 一一对应）。 */
 const PRESET_FILES = ['preset.yml', 'agent.cordis.yml', 'restrict.mjs', 'delegation-labels.mjs']
@@ -265,6 +279,17 @@ export function compareSemver(a, b) {
  */
 export function hostRejectsInlineDelegation(version) {
   const c = compareSemver(version, '0.2.1-rc.2')
+  return c !== null && c >= 0
+}
+
+/**
+ * 该宿主版本是否已把 list_agents 并入 dsh-tool-subagent-control 主导出
+ * （≥ 0.2.2-alpha.2，含该 prerelease 本身与之后的 rc/正式版）：独立子路径导出
+ * ./list-agents 已删除，v2 组合源里的 tool-subagent-list-agents 声明行必须剥离。
+ * 版本解析不了返回 false（保守侧：旧行在旧宿主上是必需的，不乱删）。
+ */
+export function hostMergedSubagentListAgents(version) {
+  const c = compareSemver(version, '0.2.2-alpha.2')
   return c !== null && c >= 0
 }
 
@@ -523,7 +548,11 @@ export function parsePresetRows(yaml, agentCordisV2Text) {
  * 按宿主版本组装托管块声明行数组（双形态的唯一决策点）：
  *   - 宿主 ≥ 0.2.1-rc.2（hostRejectsInlineDelegation）→ 'v2'：解析
  *     agent.cordis.v2.yml，返回 6 条声明行（主编 preset + 5 张角色 preset，
- *     委派行 agentPreset 形状）；
+ *     委派行 agentPreset 形状）。其中宿主 ≥ 0.2.2-alpha.2
+ *    （hostMergedSubagentListAgents）时再剥离主编 preset 的
+ *     tool-subagent-list-agents 行——0.2.2 把 list_agents 并进了
+ *     dsh-tool-subagent-control 主导出，旧行会因模块不存在整张 preset 被
+ *     注册表判 broken（issue #7）；
  *   - 宿主 < 0.2.1-rc.2（确知旧版）→ 'v1'：现有单行组装路径原样（内联
  *     persona/toolFilter 形状）；
  *   - 版本完全未知（五级探针全败）→ 不组装：rows 返回 null、reason
@@ -575,6 +604,39 @@ function absolutizeLocalPluginNames(rows, presetDir) {
   return walk(rows)
 }
 
+/**
+ * 从解析后的 v2 声明行里剥离 tool-subagent-list-agents 行（issue #7）：
+ * 0.2.2-alpha.2 起该子路径导出已删除，行保留会让模块解析失败 → 行 never
+ * started → 注册表审计把整张主编 preset 判 broken、从选择器消失。list_agents
+ * 工具本身由 control 主导出的 apply 末尾自动注册，剥离后能力无损。
+ *
+ * 匹配按插件名（name === '@deepseek-ai/dsh-tool-subagent-control/list-agents'）
+ * 而非行 id——id 是书写约定，name 才是宿主解析模块的键。保守递归下钻整棵
+ * 结构（对象/数组逐层走），任何深度的行都剥；原地修改并回传同一数组。
+ * @param {Array<object>} rows - parsePresetRows 产物（insert 列表元素数组）
+ * @returns {Array<object>} 同一 rows（已剥离）
+ */
+function stripMergedSubagentListAgents(rows) {
+  const walk = (node) => {
+    if (Array.isArray(node)) {
+      for (let i = node.length - 1; i >= 0; i--) {
+        const item = node[i]
+        if (item !== null && typeof item === 'object' && !Array.isArray(item) && item.name === SUBAGENT_LIST_AGENTS_ROW_NAME) {
+          node.splice(i, 1)
+          continue
+        }
+        walk(item)
+      }
+      return
+    }
+    if (node !== null && typeof node === 'object') {
+      for (const v of Object.values(node)) walk(v)
+    }
+  }
+  walk(rows)
+  return rows
+}
+
 export function composeManagedRows(home, logger = console) {
   const hostVersion = readHostVersion(home)
   const useV2 = hostVersion !== null && hostRejectsInlineDelegation(hostVersion)
@@ -593,9 +655,13 @@ export function composeManagedRows(home, logger = console) {
     const installedDir = path.join(home, '.agent-presets', PRESET_ID)
     if (useV2) {
       const text = readFileSync(path.join(PLUGIN_ROOT, 'presets', PRESET_ID, AGENT_CORDIS_V2_FILE), 'utf8')
+      let rows = parsePresetRows(yaml, text)
+      // ≥ 0.2.2-alpha.2：list-agents 子路径导出已并入 control 主导出（issue #7），
+      // 剥离前再 absolutize——剥离只删行，不影响 './' 名的替换。
+      if (hostMergedSubagentListAgents(hostVersion)) rows = stripMergedSubagentListAgents(rows)
       return {
         shape,
-        rows: absolutizeLocalPluginNames(parsePresetRows(yaml, text), installedDir),
+        rows: absolutizeLocalPluginNames(rows, installedDir),
         hostVersion,
         yaml,
         reason: null,
@@ -1725,9 +1791,12 @@ export function ensurePresetInstalled(ctx = {}) {
   }
   // blockAction === 'rejected'：写盘前 YAML 自检未过，upsertManagedBlock 已带
   // 文件路径与解析错误 warn 过——这里不重复刷屏，动作经返回值透出，不抛。
+  const listAgentsNote = shape === 'v2' && hostMergedSubagentListAgents(hostVersion)
+    ? '，list-agents 行已按 0.2.2+ 并入形状剥离（issue #7）'
+    : ''
   logger.info?.(
     shape === 'v2'
-      ? `maoying-installer: 委派行形状 v2（AgentPreset，宿主 DSH ${hostVersion ?? '版本未知'}）`
+      ? `maoying-installer: 委派行形状 v2（AgentPreset，宿主 DSH ${hostVersion ?? '版本未知'}${listAgentsNote}）`
       : `maoying-installer: 委派行形状 v1（内联 persona/toolFilter，宿主 DSH ${hostVersion ?? '版本未知'}）`,
   )
   return { status: 'ok', home, presetDir, copied, skillsCopied, blockAction, reason: null, shape, hostVersion, patchLayer, patchPath }
