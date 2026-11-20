@@ -357,7 +357,7 @@ test('foreshadow-status 与 phase：流转生效；未知 id 404；非法值 422
   ).status, 422)
 })
 
-test('rebuild-index：index.yml 重建生效，响应带章节数', async () => {
+test('rebuild-index：index.yml 导航与 index/ 卷片重建生效，响应带章节数', async () => {
   const env = makeEnv()
   const handler = await registeredHandler(env)
   const state = await call(handler, {
@@ -367,8 +367,11 @@ test('rebuild-index：index.yml 重建生效，响应带章节数', async () => 
   assert.equal(state.status, 200)
   assert.deepEqual(JSON.parse(state.raw), { ok: true, chapters: 2 })
   const index = readFileSync(path.join(env.root, 'novel', 'index.yml'), 'utf8')
-  assert.ok(index.includes('雪夜来客'))
   assert.ok(index.includes('total: {chapters: 2, words: 31, accepted: 1}'))
+  // 卷片：章级明细在 index/v01.yml，orphans 卷片恒产出
+  const shard = readFileSync(path.join(env.root, 'novel', 'index', 'v01.yml'), 'utf8')
+  assert.ok(shard.includes('雪夜来客'))
+  assert.ok(readFileSync(path.join(env.root, 'novel', 'index', 'orphans.yml'), 'utf8').includes('chapters:\n  []'))
 })
 
 test('client.css：文件缺席回 500 JSON 错误；在位则 text/css no-cache（兼容并行的客户端任务）', async () => {

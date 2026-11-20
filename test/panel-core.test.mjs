@@ -605,16 +605,26 @@ title: 原型试探
   assert.equal(frontmatter.title, '原型试探', '正常键不受影响')
 })
 
-test('rebuildIndex：index.yml 落盘且确定性（两次重建逐字节一致）；chapters/ 缺失 404', () => {
+test('rebuildIndex：index.yml 导航 + index/ 卷片全落盘且确定性（两次重建逐字节一致）；stale 卷片清理；chapters/ 缺失 404', () => {
   const root = makeTmpRoot()
   const novel = buildSampleNovel(root)
   assert.deepEqual(rebuildIndex(novel), { ok: true, chapters: 2 })
-  const first = readFileSync(path.join(novel, 'index.yml'), 'utf8')
-  assert.ok(first.includes('雪夜来客'))
-  assert.ok(first.includes('id: v01'))
-  assert.ok(first.includes('total: {chapters: 2, words: 31, accepted: 1}'))
+  const nav = readFileSync(path.join(novel, 'index.yml'), 'utf8')
+  // 导航：每卷一行汇总，章级明细（章标题）不进导航
+  assert.ok(nav.includes('id: v01'))
+  assert.ok(nav.includes('total: {chapters: 2, words: 31, accepted: 1}'))
+  assert.ok(nav.includes('orphans: {chapters: 0, words: 0}'))
+  assert.ok(!nav.includes('雪夜来客'), '章级明细不应出现在 index.yml 导航')
+  // 卷片：章级明细搬到 index/v01.yml；orphans 卷片恒产出（空也写 chapters: []）
+  const shard = readFileSync(path.join(novel, 'index', 'v01.yml'), 'utf8')
+  assert.ok(shard.includes('雪夜来客'))
+  assert.ok(readFileSync(path.join(novel, 'index', 'orphans.yml'), 'utf8').includes('chapters:\n  []'))
+  // stale 清理：伪造改卷号残留的旧卷片，重建后必须被删
+  writeFileSync(path.join(novel, 'index', 'v99.yml'), '# 旧卷片残留\n', 'utf8')
   rebuildIndex(novel)
-  assert.equal(readFileSync(path.join(novel, 'index.yml'), 'utf8'), first)
+  assert.equal(readFileSync(path.join(novel, 'index.yml'), 'utf8'), nav, '导航两次重建应逐字节一致')
+  assert.equal(readFileSync(path.join(novel, 'index', 'v01.yml'), 'utf8'), shard, '卷片两次重建应逐字节一致')
+  assert.equal(existsSync(path.join(novel, 'index', 'v99.yml')), false, 'stale 卷片应被清理')
 
   const empty = makeTmpRoot()
   const emptyNovel = path.join(empty, 'novel')

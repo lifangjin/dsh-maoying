@@ -60,7 +60,7 @@ webServer.register({ kind: 'prefix', path: '/api/maoying', handler: async (req, 
 | `file-save` | POST | `{ path, rel, text, base_hash? }`（text 为文件全文；base_hash 为编辑器载入时 `file-source` 的 `hash`） | `{ ok, rel, hash }`——受管文件整文件覆写：text 非 string 422、结构校验（`validateManagedText`：账本 yml 须解析为条目数组且条目全平键、md 实体卡须带成对围栏；校验先于基线检查）422、文件不存在 404（新建走 `file-create`）、base_hash 过期 → 409「`{rel}` 已被外部修改，请刷新后基于最新内容重改再存」拒写不落盘；尾无换行补一个 `\n`。hash 为写后新指纹 |
 | `file-create` | POST | `{ path, rel, text }` | `{ ok, rel, hash }`——新建受管文件（新角色/设定/科学设定卡、新章纲骨架由客户端模板预填）：已存在 409 先到先建绝不覆盖、结构校验同 `file-save`、目录缺席自动创建 |
 | `file-delete` | POST | `{ path, rel }` | `{ ok, rel }`——删除受管文件（含 `chapters/` 章节文件——这是它唯一的通用写通道）；不存在 404；服务端不做二次确认，UI 层强制确认弹层 |
-| `rebuild-index` | POST | `{ path }` | `{ ok, chapters }`——照 CLI index 同一逻辑重建 index.yml |
+| `rebuild-index` | POST | `{ path }` | `{ ok, chapters }`——照 CLI index 同一逻辑重建 index.yml 导航与 index/ 卷片（含过期卷片清理） |
 
 ### 受管文件白名单（file-* 四路由共用 `managedRelCheck`）
 

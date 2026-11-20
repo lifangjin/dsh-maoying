@@ -85,7 +85,8 @@ dsh-maoying/
 novel/
   README.md            # 数据规范速查（init 时从模板生成；主编不确定格式时读它）
   project.yml          # title/author/genre/length/language/phase/mode/description
-  index.yml            # 派生概览（maoying index 重建；主编每次开工先读）
+  index.yml            # 派生导航（maoying index 重建；每卷一行汇总，主编每次开工先读）
+  index/               # 派生卷片（index/<卷id>.yml 章级明细 + orphans.yml；写到哪卷读哪片，不整读）
   volumes.yml          # - {id: v01, title, summary, chapters: "001-020"}
   chapters/
     v01-c001.md        # frontmatter: volume/num/title/status/summary + 五维键；
@@ -134,7 +135,7 @@ delegation-labels 静态角色名映射：{outline: 大纲师, draft: 写手, re
 persona prefix 内容骨架（agent.cordis.yml 内联，中文书写）：
 
 1. **身份**：网文主编/创作总监，管 project 目录 novel/，重活委派五帮手，自己只做规划、衔接、验收、状态推进。
-2. **开工纪律**：先读 novel/project.yml + index.yml + style.md（若有）；不确定文件格式读 novel/README.md；取上下文分层门控：常驻项恒读（project.yml/style.md/主角卡/金手指与核心冲突条目/活跃伏笔），按需项出场才读（其余角色卡与非核心 world 条目，长条目只读 `## 锚点` 段），跨卷剧情先读 memories.yml 的 arc 卷摘要；不全量读章节，写到哪章读哪章上下文（前章结尾 ~1500 字 + 该章 frontmatter + 按需角色卡 + 活跃伏笔节选）。
+2. **开工纪律**：先读 novel/project.yml + index.yml 导航 + style.md（若有），章级明细在 index/ 卷片、写到哪卷读哪片不整读；不确定文件格式读 novel/README.md；取上下文分层门控：常驻项恒读（project.yml/style.md/主角卡/金手指与核心冲突条目/活跃伏笔），按需项出场才读（其余角色卡与非核心 world 条目，长条目只读 `## 锚点` 段），跨卷剧情先读 memories.yml 的 arc 卷摘要；不全量读章节，写到哪章读哪章上下文（前章结尾 ~1500 字 + 该章 frontmatter + 按需角色卡 + 活跃伏笔节选）。
 3. **七阶段状态机**（每阶段推进写 project.yml phase）：idea 选题 → setting 设定 → outline 大纲 → writing 写作 → review 审阅 → consistency 一致性 → export 导出。每完成一个里程碑必须推进 phase 并告知用户。
 4. **Writing 六步法**（逐章循环）：
    ① 衔接检查：读前章结尾，确认无断裂；
@@ -163,7 +164,7 @@ persona prefix 内容骨架（agent.cordis.yml 内联，中文书写）：
 
 - `maoying init [dir]`：从 templates/novel/ 脚手架生成 novel/（已存在文件跳过，绝不覆盖），README.md + 各 yml 带中文注释示例。
 - `maoying stats [dir]`：逐章与总字数（CJK 计数）、状态分布、phase 展示。
-- `maoying index [dir]`：从 chapters/ 重建 index.yml（卷/章/标题/状态/字数/一句话梗概）。
+- `maoying index [dir]`：从 chapters/ 重建 index.yml 导航与 index/ 卷片（导航每卷一行汇总；卷片收章级明细：卷/章/标题/状态/字数/一句话梗概，含过期卷片清理）。
 - `maoying export [dir]`：导出全书为 md / txt / epub（默认 md；`--out` 改输出目录，缺省 `<dir>/exports/`；同名自动加序号不覆盖）。
 - `maoying brief [dir] <chapter>`：组装单章写作卡（章纲 + 前章结尾 + 出场角色卡 + 活跃伏笔）；`--out <文件>` 落盘，缺省打到 stdout。
 - `maoying check [dir]`：静态体检（不调模型），与面板/规范同一套规则（frontmatter 完整性、枚举、章号、伏笔引用、时间线年份、关系卡引用、phase 阶段就绪判据）。

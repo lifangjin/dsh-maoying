@@ -113,26 +113,35 @@ Writing 六步法的第⑥步定稿维护是**原子动作**：章纲对照结�
 
 使用约定：`novel/` 建议纳入 git——账本变动看 diff，lore 回填动了哪条一目了然；作者对某笔回填不认可，`git checkout` 对应文件即是回滚。
 
-## 3. index.yml（派生）
+## 3. index.yml 与 index/ 卷片（派生）
 
-由 lore 角色按本节格式重建，或人工跑 `maoying index` 兜底。格式：
+由 lore 角色按本节格式重建，或人工跑 `maoying index` 兜底。全书拆成「导航 + 每卷一片」：导航恒定 O(卷数)，章级明细写到哪卷读哪片——agent 常驻读取不随全书章节数增长。
+
+`index.yml`（全书导航，每卷一行汇总）：
 
 ```yaml
-# index.yml —— 派生文件，可由 lore 角色或 `maoying index` 重建；手工改动会被覆盖。
+# index.yml —— 派生导航文件，可由 lore 角色或 `maoying index` 重建；手工改动会被覆盖。
+# 每卷一行汇总；章级明细（题/状态/字数/一句话梗概）在 index/<卷id>.yml 卷片，未归卷章节在 index/orphans.yml；写到哪卷读哪片，不整读。
 volumes:
-  - id: v01
-    title: 第一卷 北境风雪
-    summary: 卷定位一句话
-    chapters:
-        - {num: 1, title: 雪夜来客, status: accepted, words: 3210, summary: 一句话梗概}
-orphans:
-  - {volume: v02, num: 5, title: 未归卷章, status: writing, words: 1200, summary: ...}
-total: {chapters: 21, words: 65210, accepted: 18}
+  - {id: v01, title: 第一卷 北境风雪, chapters: 20, words: 65432, accepted: 18}
+orphans: {chapters: 3, words: 9000}
+total: {chapters: 23, words: 74432, accepted: 18}
 ```
 
-- 卷分组照 volumes.yml 顺序；卷内章节按章号升序；章节行一行一条（num/title/status/words/summary），grep 友好；
-- 不在任何卷里的章节落 `orphans`（带 volume 键）——主编每次开工扫一眼 orphans 就知道归档欠账；
+`index/v01.yml`（每卷一片，章级明细；未归卷章节单独收进 `index/orphans.yml`）：
+
+```yaml
+# index/v01.yml —— 派生卷片（全书导航见 index.yml）；由 `maoying index` 或 lore 角色重建；手工改动会被覆盖。
+volume: {id: v01, title: 第一卷 北境风雪}
+chapters:
+  - {volume: v01, num: 1, title: 雪夜来客, status: accepted, words: 3210, summary: 一句话梗概}
+```
+
+- 卷行照 volumes.yml 顺序；卷内章节按章号升序；章节行一行一条（volume/num/title/status/words/summary），grep 友好；
+- 卷 summary 是卷定位一句话，只活在 volumes.yml，导航不重复；无卷时导航 `volumes:` 下 `[]`，空卷卷片 `chapters:` 下 `[]`；
+- 不在任何卷里的章节落 `index/orphans.yml`（带 volume 键）——卷片恒产出，空也写 `chapters: []`；主编每次开工扫一眼 orphans 就知道归档欠账；
 - `total` 汇总全书：章节数、CJK 总字数、已定稿章数；
+- 每次重建删除 `index/` 下不属于本次期望文件集（导航外的 `<卷id>.yml` + `orphans.yml`）的 `*.yml`——改卷号/删卷后旧片不残留；`index/` 目录随首次重建创建；
 - 重建是全量覆盖、确定性输出（不含时间戳），产物可进 git 且 diff 干净。
 
 ## 4. CLI 与本规范的关系

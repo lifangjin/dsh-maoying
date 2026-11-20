@@ -8,7 +8,7 @@
  *
  *   maoying init [dir]    生成 novel/ 脚手架（默认 ./novel；已存在文件跳过，绝不覆盖）
  *   maoying stats [dir]   逐章字数（CJK 计数）、状态分布、当前 phase
- *   maoying index [dir]   从 volumes.yml + chapters/ 重建 index.yml（派生文件）
+ *   maoying index [dir]   从 volumes.yml + chapters/ 重建 index.yml 导航与 index/ 卷片（派生文件）
  *   maoying export [dir]  导出全书：--format md|txt|epub（默认 md）、--out <目录>
  *   maoying brief [dir] <chapter> [--out <文件>]
  *                         组装某章写作卡（章纲+前章结尾+出场角色卡+活跃伏笔）
@@ -33,6 +33,7 @@ import {
   checkProject,
   collectChapters,
   parseFlatYamlArray as parseSimpleYaml,
+  pruneStaleIndexShards, // index/ stale 卷片清理（改卷号/删卷后旧片不残留）
   readTextOrNull, // 读文本文件读不到返回 null（原 bin 本地拷贝，lib 导出后改 import）
   splitParagraphs, // 正文分段（原 bin 本地 bodyParagraphs 的同款实现）
 } from '../lib/novel-parse.mjs'
@@ -158,23 +159,29 @@ function cmdStats(targetArg) {
 
 // ── index ───────────────────────────────────────────────────────────────────
 
-// index.yml 的拼装逻辑在 lib/novel-parse.mjs 的 buildIndexYaml（与创作台
-// rebuild-index 路由共用），这里只负责读卷表、落盘与汇报。
+// index.yml 导航与 index/ 卷片的拼装逻辑在 lib/novel-parse.mjs 的
+// buildIndexYaml（与创作台 rebuild-index 路由共用），这里只负责读卷表、
+// 全部落盘（含 stale 卷片清理）与汇报。
 
 function cmdIndex(targetArg) {
   const root = path.resolve(targetArg ?? 'novel')
   const chapters = collectChapters(root)
   if (chapters === null) fail(`找不到 ${path.join(root, 'chapters')}——先跑 maoying init ${root}`)
   const volumesRaw = parseSimpleYaml(readTextOrNull(path.join(root, 'volumes.yml')))
-  const { text, volumesCount, chaptersCount, orphansCount, totalWords } = buildIndexYaml(chapters, volumesRaw)
-  const indexPath = path.join(root, 'index.yml')
+  const { files, volumesCount, chaptersCount, orphansCount, totalWords } = buildIndexYaml(chapters, volumesRaw)
   // 落盘点兜底：写不进（权限/只读盘等）报中文错，不甩英文栈
+  let wrote = ''
   try {
-    writeFileSync(indexPath, text, 'utf8')
+    for (const file of files) {
+      wrote = path.join(root, file.rel)
+      mkdirSync(path.dirname(wrote), { recursive: true }) // index/ 随首次重建创建
+      writeFileSync(wrote, file.text, 'utf8')
+    }
+    pruneStaleIndexShards(root, files.map((f) => f.rel))
   } catch (error) {
-    fail(`写入失败：${indexPath}（${error.message}）`)
+    fail(`写入失败：${wrote}（${error.message}）`)
   }
-  console.log(`已重建 ${indexPath}：${volumesCount} 卷、${chaptersCount} 章（总字数 ${totalWords}）、未归卷 ${orphansCount} 章。`)
+  console.log(`已重建 index.yml 与 index/ 卷片 ${volumesCount + 1} 份：${volumesCount} 卷、${chaptersCount} 章（总字数 ${totalWords}）、未归卷 ${orphansCount} 章。`)
 }
 
 // ── export ──────────────────────────────────────────────────────────────────
@@ -442,7 +449,7 @@ const HELP_TEXT = `毛颖（maoying）—— 网文创作项目 CLI
 用法：
   maoying init [dir]     生成 novel/ 脚手架（默认 ./novel；已存在的文件一律跳过，绝不覆盖）
   maoying stats [dir]    逐章字数（CJK 计数）、状态分布、当前阶段
-  maoying index [dir]    从 volumes.yml + chapters/ 重建 index.yml（派生文件）
+  maoying index [dir]    从 volumes.yml + chapters/ 重建 index.yml 导航与 index/ 卷片（派生文件）
   maoying export [dir]   导出全书：--format md|txt|epub（默认 md），--out <目录> 改输出位置
   maoying brief [dir] <chapter>
                          组装某章写作卡（章纲+前章结尾+出场角色卡+活跃伏笔）；--out <文件> 落盘，缺省打到 stdout

@@ -1224,8 +1224,10 @@ test('回归：init / stats / index / export 对样例项目照常工作', () =>
 
     const index = runCli(['index', proj])
     assert.equal(index.status, 0)
-    assert.ok(index.stdout.includes('已重建'))
+    assert.ok(index.stdout.includes('已重建 index.yml 与 index/ 卷片'))
     assert.ok(readFileSync(path.join(proj, 'index.yml'), 'utf8').includes('volumes:'))
+    assert.ok(readFileSync(path.join(proj, 'index', 'v01.yml'), 'utf8').includes('雪夜来客'))
+    assert.ok(readFileSync(path.join(proj, 'index', 'orphans.yml'), 'utf8').includes('chapters:\n  []'))
 
     const exportOut = path.join(dir, 'exports-out')
     const exp = runCli(['export', proj, '--format', 'txt', '--out', exportOut])

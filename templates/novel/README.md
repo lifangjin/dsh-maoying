@@ -1,11 +1,11 @@
 # novel/ 数据规范速查
 
-本目录是一部网文项目的全部状态：结构化 markdown/YAML 文件就是数据库。查「所有未回收伏笔」就是 grep foreshadows.yml——不需要数据库，不需要 API 层；人可以直接改文件，git 可以版本化。主编（agent）开工先读 project.yml 与 index.yml 掌握全局；不确定格式就读本文件。
+本目录是一部网文项目的全部状态：结构化 markdown/YAML 文件就是数据库。查「所有未回收伏笔」就是 grep foreshadows.yml——不需要数据库，不需要 API 层；人可以直接改文件，git 可以版本化。主编（agent）开工先读 project.yml 与 index.yml（全书导航：每卷一行汇总）掌握全局，章级明细在 index/<卷id>.yml 卷片、写到哪卷读哪片；不确定格式就读本文件。
 
 ## 总原则
 
 - **所有 yml 顶层是数组或平键，禁止深嵌套**——grep 友好，一眼可查、一处一行。
-- **index.yml 是派生文件**：由 lore 角色或 `maoying index` 重建，手工改动会被覆盖；不要在它上面记东西。
+- **index.yml 与 index/ 卷片是派生文件**：index.yml 是全书导航（每卷一行汇总），章级明细在 `index/<卷id>.yml` 卷片、未归卷章节在 `index/orphans.yml`；由 lore 角色或 `maoying index` 重建，手工改动会被覆盖，不要在导航或卷片上记东西。
 - 章节、角色卡等 md 文件用 `---` 围栏包 frontmatter，键值一行一个（简单标量），正文写在第二个 `---` 之后（body）。
 - 枚举值一律用下列全称，不要自造缩写：
   - 章节状态 `status`：`pending`（待写）→ `writing`（写作中）→ `review`（审阅中）→ `accepted`（已定稿）
@@ -60,7 +60,7 @@ volume: v01
 num: 1
 title: 雪夜来客
 status: pending          # pending|writing|review|accepted
-summary: 一句话梗概（index.yml 与 stats 直接引用）
+summary: 一句话梗概（index/ 卷片与 stats 直接引用）
 cognitive_frame: 本章读者的认知被如何推动（信息差/误解/顿悟点）
 emotional_anchor: 本章要锚定的情绪与共情对象
 world_texture: 本章着墨的世界细节层面（风物/规矩/器物）
